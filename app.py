@@ -35,13 +35,13 @@ def load_data():
         "https://www.googleapis.com/auth/drive"
     ]
     
-creds_dict = json.loads(secrets["gcp_service_account"])
-
-creds = ServiceAccountCredentials.from_json_keyfile_dict(
-    creds_dict, scope
-)
-
+    creds_dict = json.loads(secrets["gcp_service_account"])
+    
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(
+        creds_dict, scope
     )
+
+    
     client = gspread.authorize(creds)
     sheet = client.open("db_litoteca_unsa").sheet1
     return pd.DataFrame(sheet.get_all_records())
