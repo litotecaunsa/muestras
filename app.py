@@ -67,7 +67,9 @@ def drive_to_img(texto):
 
     if match:
         file_id = match.group(1)
-        return f"https://lh3.googleusercontent.com/d/{file_id}"
+
+        # ✅ ESTA ES LA URL CORRECTA
+        return f"https://drive.google.com/uc?id={file_id}"
 
     return None
 
