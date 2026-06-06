@@ -36,7 +36,7 @@ def load_data():
     ]
     
     creds_dict = st.secrets["gcp_service_account"]
-    
+    creds_dict = json.loads(st.secrets["gcp_service_account"].strip())
     creds = ServiceAccountCredentials.from_json_keyfile_dict(
         creds_dict, scope
     )
