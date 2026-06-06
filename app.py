@@ -35,7 +35,7 @@ def load_data():
         "https://www.googleapis.com/auth/drive"
     ]
     
-    creds_dict = st.secrets["gcp_service_account"]
+     
     creds_dict = json.loads(st.secrets["gcp_service_account"].strip())
     creds = ServiceAccountCredentials.from_json_keyfile_dict(
         creds_dict, scope
