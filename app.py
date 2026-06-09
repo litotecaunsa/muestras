@@ -188,13 +188,16 @@ if st.session_state.mapa_punto:
 			st.rerun()
 
 st.sidebar.markdown("---")
+# Definir cuál opción debe estar seleccionada por defecto en base al session_state
+indice_actual = 0 if st.session_state.vista == "🔎 Catálogo" else 1
+
 vista = st.sidebar.radio(
 	"Seleccionar vista",
 	["🔎 Catálogo", "🗺 Mapa"],
-	index=0 if st.session_state.vista == "🔎 Catálogo" else 1
+	index=indice_actual
 )
 
-# Mantener estado de vista
+# Sincronizamos el estado
 st.session_state.vista = vista
 
 # --------------------------------
@@ -229,6 +232,7 @@ def renderizar_muestra_catalogo(row, context="catalogo"):
 	with col2:
 		st.write("**Acciones:**")
 		# Botón para geolocalizar (solo si tiene coordenadas)
+		# Botón para geolocalizar (solo si tiene coordenadas)
 		if pd.notna(row["latitud"]) and pd.notna(row["longitud"]):
 			if st.button(f"📍 Ubicar en Mapa", key=f"map_{context}_{row['fullname']}"):
 				st.session_state.mapa_punto = {
@@ -237,6 +241,10 @@ def renderizar_muestra_catalogo(row, context="catalogo"):
 					"nombre": row["fullname"]
 				}
 				st.session_state.mapa_zoom = None # Reset zoom previo
+				
+				# 🚀 EL TRUCO ESTÁ AQUÍ: Forzamos el cambio de pestaña en la interfaz
+				st.session_state.vista = "🗺 Mapa"
+				
 				st.rerun()
 		
 		# ---------------------------------------------------------
