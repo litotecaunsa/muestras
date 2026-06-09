@@ -55,39 +55,33 @@ def load_data():
     return pd.DataFrame(sheet.get_all_records())
 
 
+
 # --------------------------------
 # ✅ GESTIÓN DE IMÁGENES (CLOUDINARY DIRECTO)
 # --------------------------------
 def limpiar_url_imagen(texto):
-    """Limpia el texto de la columna foto_url1 para obtener la URL base."""
-    # Si es un valor nulo real de Python o Pandas, fuera
-    if texto is None or pd.isna(texto):
+    """Limpia el texto de la columna foto_url1 para obtener la URL base de forma ultra-estricta."""
+    # 1. Si es nulo de pandas, nativo o vacío, se descarta
+    if pd.isna(texto) or texto is None:
         return None
         
-    # Lo convertimos a string y limpiamos espacios rebeldes
-    texto = str(texto).strip()
+    # 2. Convertir a string y limpiar espacios extremos
+    texto_str = str(texto).strip()
     
-    # Filtros comunes para celdas sin foto válida o textos residuales
-    if texto.lower() in ["0", "", "nan", "none", "sin foto", "no", "<na>"]:
+    # 3. Si quedó vacío o es una palabra clave de error/vacío, se descarta
+    if texto_str.lower() in ["", "0", "0.0", "nan", "none", "sin foto", "no", "<na>", "null"]:
         return None
         
-    # 🔍 REGLA DE ORO: Si no empieza con protocolo web, NO es una URL válida
-    if texto.startswith("http://") or texto.startswith("https://"):
-        return texto
+    # 4. Control definitivo: Debe empezar con el protocolo web correcto
+    if texto_str.startswith("http://") or texto_str.startswith("https://"):
+        return texto_str
         
-    # Cualquier otra cosa (números sueltos, textos de error) se descarta
     return None
 
 def optimizar_url_cloudinary(url_original):
-    """
-    Toma una URL original de Cloudinary e inyecta parámetros de optimización.
-    Mantiene la app rápida y ahorra ancho de banda.
-    w_500: Ancho de 500px (suficiente para vista previa)
-    q_auto: Calidad automática
-    f_auto: Formato automático (webp, avif, etc.)
-    """
-    # 🔍 NUEVA VALIDACIÓN: Si no es un string válido, devolvemos None inmediatamente
-    if not isinstance(url_original, str):
+    """Toma una URL original de Cloudinary e inyecta parámetros de optimización."""
+    # Control estricto: si no recibimos un string limpio con contenido, devolvemos None
+    if not isinstance(url_original, str) or not url_original:
         return None
         
     if "cloudinary.com" not in url_original:
@@ -135,11 +129,17 @@ def fix_coord(valor, tipo="lat"):
 df["latitud"] = df["latitud"].apply(lambda x: fix_coord(x, "lat"))
 df["longitud"] = df["longitud"].apply(lambda x: fix_coord(x, "lon"))
 
-# ✅ Procesamiento de Imágenes Cloudinary
-# 1. URL Original (para zoom/alta resolución)
+# ✅ Procesamiento de Imágenes Cloudinary Ultra-Seguro
+# 1. Forzamos a que la columna original se trate temporalmente como objeto/string antes de limpiar
 df["img_original"] = df["foto_url1"].apply(limpiar_url_imagen)
-# 2. URL Optimizada (para previsualización rápida en la app)
+
+# 2. Aplicamos la optimización asegurando que reemplace cualquier residuo con None real
 df["img_app"] = df["img_original"].apply(optimizar_url_cloudinary)
+
+# 3. PASO EXTRA DE SEGURIDAD: Forzamos a que si img_app es un string vacío o nulo de pandas, sea un None de Python puro
+df["img_app"] = df["img_app"].where(df["img_app"].notna(), None)
+
+
 
 # --------------------------------
 # ✅ CONTROL DE VISTA
