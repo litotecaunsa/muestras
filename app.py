@@ -242,7 +242,10 @@ def renderizar_muestra_catalogo(row, context="catalogo"):
 		# ---------------------------------------------------------
 		# ✅ LÓGICA 'ON DEMAND' CLOUDINARY
 		# ---------------------------------------------------------
-		if row["img_app"]:
+		
+		url_valida = isinstance(row["img_app"], str) and row["img_app"].startswith("http")
+
+		if url_valida:
 			# Identificador único para este botón
 			current_code = row['fullname']
 			
