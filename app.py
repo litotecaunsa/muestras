@@ -179,24 +179,63 @@ def renderizar_muestra_catalogo(row, context="catalogo"):
     col1, col2 = st.columns([2, 1])
 
     with col1:
-        st.subheader(f"{row.get('fullname', context)}")
+        # 🏷️ Cabecera principal con diseño de tarjeta
+        st.markdown(f"### 🪨 Muestra: <span style='color:#FF4B4B;'>{row.get('fullname', context)}</span>", unsafe_allow_html=True)
         
+        # 🗂️ Ficha de Datos Básicos en columnas limpias
         c1, c2, c3 = st.columns(3)
         with c1:
-            st.write(f"**Tipo:** {row.get('tipo','')}")
+            st.markdown(f"**📁 Tipo:**\n{row.get('tipo','—')}")
+            st.markdown(f"**🎨 Color:**\n{row.get('color','—')}")
         with c2:
-            st.write(f"**Subtipo:** {row.get('subtipo','')}")
+            st.markdown(f"**🌿 Subtipo:**\n{row.get('subtipo','—')}")
         with c3:
-            st.write(f"**Roca:** {row.get('roca','')}")
+            st.markdown(f"**💎 Roca:**\n`{row.get('roca','—')}`")
             
-        st.write(f"**Color:** {row.get('color','')}")
-        st.write(f"**Observaciones:** {row.get('observaciones','')}")
+        st.markdown(f"**📝 Observaciones:**\n*{row.get('observaciones','Sin observaciones particulares.')}*")
 
+        # 🔬 Características Sedimentarias Avanzadas (Diseño Ficha Premium)
         if row.get("tipo") == "Sedimentaria":
-            with st.expander("Ver características sedimentarias"):
-                st.write(f"**Textura:** {row.get('textura','')}, **Estructura:** {row.get('estructura','')}")
-                st.write(f"**Minerales:** {row.get('mimeral_pri','')}(P), {row.get('mineral_secu','')}(S)")
-                st.write(f"**Composición:** Clasto({row.get('clasto_sed','')}), Matriz({row.get('matriz_sed','')}), Cemento({row.get('cemento_sed','')})")
+            with st.expander("🔍 Ver Características Sedimentarias Detalladas", expanded=False):
+                
+                # Sección 1: Textura y Estructura
+                st.markdown("#### 📐 Textura y Estructura")
+                cx1, cx2 = st.columns(2)
+                cx1.metric(label="🧬 Textura", value=str(row.get('textura','—')).capitalize())
+                cx2.metric(label="🧱 Estructura", value=str(row.get('estructura','—')).capitalize())
+                
+                st.markdown("---")
+                
+                # Sección 2: Mineralogía Desglosada (Sin abreviaturas raras)
+                st.markdown("#### 💎 Composición Mineralógica")
+                cm1, cm2 = st.columns(2)
+                with cm1:
+                    st.markdown(f"**✨ Mineral Primario:**\n{row.get('mimeral_pri','—')}")
+                with cm2:
+                    st.markdown(f"**✨ Mineral Secundario:**\n{row.get('mineral_secu','—')}")
+                
+                st.markdown("---")
+                
+                
+                # Sección 3: Matriz de Soporte (Clasto, Matriz, Cemento) adaptativa
+                st.markdown("#### 🔬 Análisis de Componentes (Fábrica)")
+                cc1, cc2, cc3 = st.columns(3)
+
+                with cc1:
+                    with st.container(border=True):
+                        st.markdown("<div style='text-align:center;'><b>🔴 Clasto</b></div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='text-align:center;'>{row.get('clasto_sed','—')}</div>", unsafe_allow_html=True)
+                        
+                with cc2:
+                    with st.container(border=True):
+                        st.markdown("<div style='text-align:center;'><b>🟡 Matriz</b></div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='text-align:center;'>{row.get('matriz_sed','—')}</div>", unsafe_allow_html=True)
+                        
+                with cc3:
+                    with st.container(border=True):
+                        st.markdown("<div style='text-align:center;'><b>🟤 Cemento</b></div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='text-align:center;'>{row.get('cemento_sed','—')}</div>", unsafe_allow_html=True)
+
 
     with col2:
         st.write("**Acciones:**")
