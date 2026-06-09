@@ -2,27 +2,30 @@ import streamlit as st
 import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-import re
-
-import json
-from streamlit import secrets
-
+import folium
+from streamlit_folium import st_folium
+from folium.plugins import MarkerCluster
 
 # --------------------------------
-# ✅ SESSION STATE
+# ✅ SESSION STATE (INICIALIZACIÓN)
 # --------------------------------
+# Control de selección en mapa
 if "mapa_punto" not in st.session_state:
     st.session_state.mapa_punto = None
 
-# 👉 ✅ 
+# Control de zoom en mapa
 if "mapa_zoom" not in st.session_state:
     st.session_state.mapa_zoom = None
 
+# ✅ NUEVO: Control para visualización 'On Demand' en el catálogo
+# Guarda qué código de muestra tiene la foto expandida actualmente
+if "foto_expandida" not in st.session_state:
+    st.session_state.foto_expandida = None
 
 # --------------------------------
 # CONFIG
 # --------------------------------
-st.set_page_config(layout="wide")
+st.set_page_config(layout="wide", page_title="Litoteca UNSA")
 st.title("🪨 Litoteca UNSA")
 
 # --------------------------------
@@ -51,463 +54,376 @@ def load_data():
     sheet = client.open("db_litoteca_unsa").sheet1
     return pd.DataFrame(sheet.get_all_records())
 
+
 # --------------------------------
-# IMÁGENES
+# ✅ GESTIÓN DE IMÁGENES (CLOUDINARY DIRECTO)
 # --------------------------------
-def drive_to_img(texto):
+def limpiar_url_imagen(texto):
+    """Limpia el texto de la columna foto_url1 para obtener la URL base."""
     if not texto:
         return None
-
     texto = str(texto).strip()
-
-    if texto in ["0", "", "nan", "None", "sin foto"]:
+    # Filtros comunes para celdas sin foto válida
+    if texto.lower() in ["0", "", "nan", "none", "sin foto", "no"]:
         return None
-
-    match = re.search(r"/d/([a-zA-Z0-9_-]+)", texto)
-
-    if match:
-        file_id = match.group(1)
-
-        # ✅ ESTA ES LA URL CORRECTA
-        return f"https://drive.google.com/uc?id={file_id}"
-
+    # Verifica que empiece como URL
+    if texto.startswith("http://") or texto.startswith("https://"):
+        return texto
     return None
+
+def optimizar_url_cloudinary(url_original):
+    """
+    Toma una URL original de Cloudinary e inyecta parámetros de optimización.
+    Mantiene la app rápida y ahorra ancho de banda.
+    w_500: Ancho de 500px (suficiente para vista previa)
+    q_auto: Calidad automática
+    f_auto: Formato automático (webp, avif, etc.)
+    """
+    if not url_original or "cloudinary.com" not in url_original:
+        return url_original
+    
+    # Inyectar parámetros antes del nombre del archivo (después de /upload/)
+    if "/image/upload/" in url_original:
+        return url_original.replace("/image/upload/", "/image/upload/f_auto,q_auto,w_500/")
+    return url_original
 
 # --------------------------------
 # DATOS
 # --------------------------------
-df = load_data()
+# Intentar cargar datos, manejar error de credenciales
+try:
+    df_raw = load_data()
+except Exception as e:
+    st.error(f"Error al conectar con Google Sheets. Verifica 'credenciales.json'. Error: {e}")
+    st.stop()
 
+# Crear copia para trabajar
+df = df_raw.copy()
+
+# ✅ Reparación automática de coordenadas (tu lógica original mejorada)
 def fix_coord(valor, tipo="lat"):
-    if pd.isna(valor):
+    if pd.isna(valor) or valor == "":
         return None
-
     try:
         texto = str(valor).strip().replace(",", ".")
-        numero = float(texto)
-
-        # --------------------------------
-        # ✅ CORRECCIÓN POR ESCALA
-        # --------------------------------
+        # Eliminar cualquier carácter que no sea número, punto o signo menos
+        texto_limpio = "".join(c for c in texto if c.isdigit() or c in ".-")
+        if not texto_limpio: return None
+        numero = float(texto_limpio)
+        # Corrección por escala (asumiendo formato incorrecto sin decimales)
         if tipo == "lat":
             while abs(numero) > 90:
                 numero = numero / 10
-
         if tipo == "lon":
             while abs(numero) > 180:
                 numero = numero / 10
-
         return numero
-
     except:
         return None
 
 df["latitud"] = df["latitud"].apply(lambda x: fix_coord(x, "lat"))
 df["longitud"] = df["longitud"].apply(lambda x: fix_coord(x, "lon"))
-df["img"] = df["foto_url1"].apply(drive_to_img)
+
+# ✅ Procesamiento de Imágenes Cloudinary
+# 1. URL Original (para zoom/alta resolución)
+df["img_original"] = df["foto_url1"].apply(limpiar_url_imagen)
+# 2. URL Optimizada (para previsualización rápida en la app)
+df["img_app"] = df["img_original"].apply(optimizar_url_cloudinary)
 
 # --------------------------------
-# ✅ CONTROL DE VISTA (PRO)
+# ✅ CONTROL DE VISTA
 # --------------------------------
 if "vista" not in st.session_state:
     st.session_state.vista = "🔎 Catálogo"
 
-st.sidebar.title("Menú")
+st.sidebar.title("Menú UNSA")
+
 # --------------------------------
-# ✅ DETALLE EN SIDEBAR
+# ✅ DETALLE EN SIDEBAR (Cuando se selecciona en mapa)
 # --------------------------------
 if st.session_state.mapa_punto:
+    # Buscar la fila por fullname
+    seleccion = df[df["fullname"] == st.session_state.mapa_punto["nombre"]]
+    
+    if not seleccion.empty:
+        fila = seleccion.iloc[0]
+        st.sidebar.markdown("---")
+        st.sidebar.subheader(f"📄 Muestra: {fila['fullname']}")
 
-    fila = df[df["fullname"] == st.session_state.mapa_punto["nombre"]].iloc[0]
+        # Info Básica
+        col_sb1, col_sb2 = st.sidebar.columns(2)
+        with col_sb1:
+            st.write(f"**Tipo:** {fila.get('tipo','')}")
+            st.write(f"**Roca:** {fila.get('roca','')}")
+        with col_sb2:
+            st.write(f"**Subtipo:** {fila.get('subtipo','')}")
+            st.write(f"**Color:** {fila.get('color','')}")
+        
+        st.write(f"**Observaciones:** {fila.get('observaciones','')}")
 
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("📄 Muestra seleccionada")
+        # Detalle Sedimentaria
+        if fila.get("tipo") == "Sedimentaria":
+            with st.sidebar.expander("Ver detalles sedimentarios", expanded=True):
+                st.write(f"**Textura:** {fila.get('textura','')}")
+                st.write(f"**Estructura:** {fila.get('estructura','')}")
+                st.write(f"**Mineral primario:** {fila.get('mimeral_pri','')}")
+                st.write(f"**Mineral secundario:** {fila.get('mineral_secu','')}")
+                st.write(f"**Clasto:** {fila.get('clasto_sed','')}")
+                st.write(f"**Matriz:** {fila.get('matriz_sed','')}")
+                st.write(f"**Cemento:** {fila.get('cemento_sed','')}")
 
-    st.sidebar.write(f"Código: {fila['fullname']}")
-    st.sidebar.write(f"Tipo: {fila.get('tipo','')}")
-    st.sidebar.write(f"Subtipo: {fila.get('subtipo','')}")
-    st.sidebar.write(f"Roca: {fila.get('roca','')}")
-    st.sidebar.write(f"Color: {fila.get('color','')}")
-    st.sidebar.write(f"Observaciones: {fila.get('observaciones','')}")
+        # Imagen (Optimizada para sidebar)
+        if fila["img_app"]:
+            st.sidebar.image(fila["img_app"], caption=f"Muestra {fila['fullname']} (Vista rápida)", use_container_width=True)
+            # Enlace a original
+            st.sidebar.markdown(f"[🔍 Ver en Alta Resolución]({fila['img_original']})")
 
-    if fila.get("tipo") == "Sedimentaria":
-        st.sidebar.markdown("**Sedimentaria:**")
-        st.sidebar.write(f"Textura: {fila.get('textura','')}")
-        st.sidebar.write(f"Estructura: {fila.get('estructura','')}")
-        st.sidebar.write(f"Mineral primario: {fila.get('mimeral_pri','')}")
-        st.sidebar.write(f"Mineral secundario: {fila.get('mineral_secu','')}")
-        st.sidebar.write(f"Clasto: {fila.get('clasto_sed','')}")
-        st.sidebar.write(f"Matriz: {fila.get('matriz_sed','')}")
-        st.sidebar.write(f"Cemento: {fila.get('cemento_sed','')}")
+        if st.sidebar.button("❌ Limpiar selección", use_container_width=True):
+            st.session_state.mapa_punto = None
+            st.session_state.foto_expandida = None # Limpiar también foto expandida
+            st.rerun()
 
-    if fila["img"]:
-        st.sidebar.image(fila["img"], use_container_width=True)
-
-    if st.sidebar.button("❌ Limpiar selección"):
-        st.session_state.mapa_punto = None
-        st.rerun()
-
-
-
+st.sidebar.markdown("---")
 vista = st.sidebar.radio(
     "Seleccionar vista",
     ["🔎 Catálogo", "🗺 Mapa"],
     index=0 if st.session_state.vista == "🔎 Catálogo" else 1
 )
 
-# mantener estado
+# Mantener estado de vista
 st.session_state.vista = vista
 
 # --------------------------------
-# 🔎 CATÁLOGO
+# FUNCIONES AUXILIARES DE RENDERIZADO
+# --------------------------------
+def renderizar_muestra_catalogo(row, context="catalogo"):
+    """Dibuja una muestra en el catálogo/buscador con lógica 'On Demand'."""
+    st.markdown("---")
+    col1, col2 = st.columns([2, 1])
+
+    with col1:
+        st.subheader(f"{row.get('fullname', context)}")
+        
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.write(f"**Tipo:** {row.get('tipo','')}")
+        with c2:
+            st.write(f"**Subtipo:** {row.get('subtipo','')}")
+        with c3:
+            st.write(f"**Roca:** {row.get('roca','')}")
+            
+        st.write(f"**Color:** {row.get('color','')}")
+        st.write(f"**Observaciones:** {row.get('observaciones','')}")
+
+        # Sedimentarias (Compacto)
+        if row.get("tipo") == "Sedimentaria":
+            with st.expander("Ver características sedimentarias"):
+                st.write(f"**Textura:** {row.get('textura','')}, **Estructura:** {row.get('estructura','')}")
+                st.write(f"**Minerales:** {row.get('mimeral_pri','')}(P), {row.get('mineral_secu','')}(S)")
+                st.write(f"**Composición:** Clasto({row.get('clasto_sed','')}), Matriz({row.get('matriz_sed','')}), Cemento({row.get('cemento_sed','')})")
+
+    with col2:
+        st.write("**Acciones:**")
+        # Botón para geolocalizar (solo si tiene coordenadas)
+        if pd.notna(row["latitud"]) and pd.notna(row["longitud"]):
+            if st.button(f"📍 Ubicar en Mapa", key=f"map_{context}_{row['fullname']}"):
+                st.session_state.mapa_punto = {
+                    "lat": row["latitud"],
+                    "lon": row["longitud"],
+                    "nombre": row["fullname"]
+                }
+                st.session_state.mapa_zoom = None # Reset zoom previo
+                st.rerun()
+        
+        # ---------------------------------------------------------
+        # ✅ LÓGICA 'ON DEMAND' CLOUDINARY
+        # ---------------------------------------------------------
+        if row["img_app"]:
+            # Identificador único para este botón
+            current_code = row['fullname']
+            
+            # Verificar si ESTA foto es la que debe estar expandida
+            is_expanded = (st.session_state.foto_expandida == current_code)
+            
+            label = "🔼 Ocultar Foto" if is_expanded else "📷 Ver Foto"
+            
+            if st.button(label, key=f"btn_foto_{context}_{current_code}"):
+                if is_expanded:
+                    st.session_state.foto_expandida = None # Ocultar
+                else:
+                    st.session_state.foto_expandida = current_code # Mostrar esta
+                st.rerun()
+
+            # Renderizar foto SOLO si está seleccionada (On Demand)
+            if is_expanded:
+                st.markdown("---")
+                # HTML para clic y ampliar (abre img_original en pestaña nueva)
+                st.markdown(f"""
+                <a href="{row['img_original']}" target="_blank">
+                    <img src="{row['img_app']}" style="width:100%; border-radius:8px; border: 2px solid #ddd; cursor: zoom-in;" title="Click para ver original en alta resolución">
+                </a>
+                <div style="text-align: center; color: gray; font-size: 0.8rem;">🔍 Click en la imagen para ampliar (Muestra {current_code})</div>
+                """, unsafe_allow_html=True)
+        else:
+            st.warning("⚠️ Muestra sin foto disponible")
+
+# --------------------------------
+# 🔎 VISTA: CATÁLOGO
 # --------------------------------
 if vista == "🔎 Catálogo":
+    st.header("Catálogo de muestras (Visualización bajo demanda)")
 
-    st.header("Catálogo de muestras")
+    # ✅ BUSCADOR
+    st.markdown("### 🔎 Buscar por código")
+    t1, t2 = st.tabs(["Ingreso Manual", "Ayuda"])
+    
+    with t1:
+        codigo_input = st.text_input("Código completo", placeholder="ej: A-1IA1").upper().strip()
+    with t2:
+        st.info("Ingresa el código 'fullname' exacto que figura en el Sheet.")
 
-    # --------------------------------
-    # ✅ MAPA ARRIBA
-    # --------------------------------
-    if st.session_state.mapa_punto:
-
-        import folium
-        from streamlit_folium import st_folium
-
-        p = st.session_state.mapa_punto
-
-        row = df[df["fullname"] == p["nombre"]].iloc[0]
-
-        mapa = folium.Map(
-            location=[row["latitud"], row["longitud"]],
-            zoom_start=12
-        )
-
-
-        html = f"<b>{row['fullname']}</b><br>{row['roca']}"
-
-        if row["img"]:
-            html += f'<br><img src="{row["img"]}" width="200">'
-
-
-        folium.Marker(
-            location=[row["latitud"], row["longitud"]],
-            popup=folium.Popup(html, max_width=250)
-        ).add_to(mapa)
-
-        st_folium(mapa, width=900, height=500)
-
-        # ------------------------------
-        # BUSCAR FILA ORIGINAL
-        # ------------------------------
-        row = df[df["fullname"] == p["nombre"]].iloc[0]
-
-        st.markdown("### 📄 Información de la muestra")
-
-        col1, col2 = st.columns([1, 2])
-
-        # INFO COMPLETA
-        with col1:
-            st.write(f"Tipo: {row.get('tipo','')}")
-            st.write(f"Subtipo: {row.get('subtipo','')}")
-            st.write(f"Roca: {row.get('roca','')}")
-            st.write(f"Color: {row.get('color','')}")
-            st.write(f"Observaciones: {row.get('observaciones','')}")
-
-            # ✅ SEDIMENTARIAS
-            if row.get("tipo") == "Sedimentaria":
-                st.markdown("**Características sedimentarias:**")
-
-                st.write(f"Textura: {row.get('textura','')}")
-                st.write(f"Estructura: {row.get('estructura','')}")
-                st.write(f"Mineral primario: {row.get('mimeral_pri','')}")
-                st.write(f"Mineral secundario: {row.get('mineral_secu','')}")
-                st.write(f"Clasto: {row.get('clasto_sed','')}")
-                st.write(f"Matriz: {row.get('matriz_sed','')}")
-                st.write(f"Cemento: {row.get('cemento_sed','')}")
-
-        # IMAGEN GRANDE
-        with col2:
-            if row["img"]:
-                st.markdown(f"""
-                <a href="{row['img']}" target="_blank">
-                    <img src="{row['img']}" style="width:100%; border-radius:8px;">
-                </a>
-                """, unsafe_allow_html=True)
-
-                st.caption("🔍 Click en la imagen para ampliar")
-
+    # Renderizar Buscador
+    if codigo_input:
+        df_busqueda = df[df["fullname"].astype(str) == codigo_input]
         
-        if st.button("🌍 Abrir en mapa general"):
-
-            st.session_state.mapa_zoom = {
-                "lat": p["lat"],
-                "lon": p["lon"]
-            }
-
-            st.session_state.mapa_punto = None
-            st.session_state.vista = "🗺 Mapa"
-
-            st.rerun()
-        
-        
-        # ------------------------------
-        # BOTÓN VOLVER
-        # ------------------------------
-        if st.button("🔙 Volver al catálogo"):
-            st.session_state.mapa_punto = None
-            st.rerun()
-
-        # 💥 CLAVE
-        st.stop()
-
-    # --------------------------------
-    # 🔎 BUSCADOR
-    # --------------------------------
-    st.subheader("Buscar por código")
-
-    codigo = st.text_input("Ingresar código (ej: A-1IA1)").upper().strip()
-
-    if codigo:
-
-        df_busqueda = df[df["fullname"].astype(str) == codigo]
-
-        if len(df_busqueda) == 0:
-            st.warning("No se encontró ese código")
+        if df_busqueda.empty:
+            st.warning(f"No se encontró ninguna muestra con el código '{codigo_input}'")
         else:
-            st.success(f"Resultado para: {codigo}")
-
+            st.success(f"Se encontró {len(df_busqueda)} coincidencia(s) para: {codigo_input}")
             for _, row in df_busqueda.iterrows():
+                renderizar_muestra_catalogo(row, context="search")
+            st.stop() # Detener renderizado del catálogo general si hay búsqueda
 
-                st.markdown("---")
-                col1, col2 = st.columns([1, 2])
+    st.markdown("---")
+    
+    # ✅ FILTROS DEL CATÁLOGO
+    st.subheader("Filtrar catálogo completo")
+    col_f1, col_f2 = st.columns(2)
+    
+    with col_f1:
+        tipos_disponibles = sorted(df["tipo"].dropna().unique())
+        tipo_sel = st.selectbox("1. Filtrar por Tipo", ["Todos"] + tipos_disponibles)
 
-                with col1:
-                    st.subheader(row.get("fullname", ""))
+    df_filtrado = df.copy()
+    if tipo_sel != "Todos":
+        df_filtrado = df_filtrado[df_filtrado["tipo"] == tipo_sel]
 
-                    st.write(f"Tipo: {row.get('tipo','')}")
-                    st.write(f"Subtipo: {row.get('subtipo','')}")
-                    st.write(f"Roca: {row.get('roca','')}")
-                    st.write(f"Color: {row.get('color','')}")
-                    st.write(f"Observaciones: {row.get('observaciones','')}")
+    with col_f2:
+        subtipos_disponibles = sorted(df_filtrado["subtipo"].dropna().unique())
+        subtipo_sel = st.selectbox("2. Filtrar por Subtipo (opcional)", ["Todos"] + subtipos_disponibles)
 
-                    if row.get("tipo") == "Sedimentaria":
-                        st.markdown("**Características sedimentarias:**")
-                        st.write(f"Textura: {row.get('textura','')}")
-                        st.write(f"Estructura: {row.get('estructura','')}")
-                        st.write(f"Mineral primario: {row.get('mimeral_pri','')}")
-                        st.write(f"Mineral secundario: {row.get('mineral_secu','')}")
-                        st.write(f"Clasto: {row.get('clasto_sed','')}")
-                        st.write(f"Matriz: {row.get('matriz_sed','')}")
-                        st.write(f"Cemento: {row.get('cemento_sed','')}")
+    if subtipo_sel != "Todos":
+        df_filtrado = df_filtrado[df_filtrado["subtipo"] == subtipo_sel]
 
-                with col2:
-                    if row["img"]:
-                        st.markdown(f"""
-                        <a href="{row['img']}" target="_blank">
-                            <img src="{row['img']}" style="width:100%; border-radius:8px;">
-                        </a>
-                        """, unsafe_allow_html=True)
+    # ✅ RESULTADOS (Paginación implícita por seguridad de rendimiento)
+    MAX_MUESTRAS_CATALOGO = 50
+    total_resultados = len(df_filtrado)
+    st.write(f"🔎 Resultados encontrados: **{total_resultados}**")
 
-                        st.caption("🔍 Click en la imagen para ampliar")
+    if total_resultados > MAX_MUESTRAS_CATALOGO:
+        st.warning(f"Mostrando solo las primeras {MAX_MUESTRAS_CATALOGO} muestras para optimizar carga. Usa los filtros o el buscador para refinar.")
+        df_filtrado = df_filtrado.head(MAX_MUESTRAS_CATALOGO)
 
-                    if pd.notna(row["latitud"]) and pd.notna(row["longitud"]):
-                        if st.button(f"📍 Ver en mapa {row['fullname']}"):
-
-                            st.session_state.mapa_punto = {
-                                "lat": row["latitud"],
-                                "lon": row["longitud"],
-                                "nombre": row["fullname"],
-                                "roca": row["roca"],
-                                "img": row["img"]
-                            }
-
-                            st.rerun()
-
-        st.stop()
-
-    # --------------------------------
-    # FILTROS
-    # --------------------------------
-    tipos = ["Seleccionar"] + sorted(df["tipo"].dropna().unique())
-    tipo_sel = st.selectbox("Tipo", tipos)
-
-    if tipo_sel == "Seleccionar":
-        st.info("Seleccioná un tipo para comenzar")
-        st.stop()
-
-    df_filtrado = df[df["tipo"] == tipo_sel]
-
-    if tipo_sel != "Metamórfica":
-        subtipos = ["Todos"] + sorted(df_filtrado["subtipo"].dropna().unique())
-        subtipo_sel = st.selectbox("Subtipo", subtipos)
-
-        if subtipo_sel != "Todos":
-            df_filtrado = df_filtrado[df_filtrado["subtipo"] == subtipo_sel]
-
-    st.write(f"🔎 Resultados: {len(df_filtrado)}")
-
+    # Renderizado del bucle principal
     for _, row in df_filtrado.iterrows():
-
-        st.markdown("---")
-        col1, col2 = st.columns([1, 2])
-
-        with col1:
-            st.subheader(row.get("fullname",""))
-
-            st.write(f"Tipo: {row.get('tipo','')}")
-            st.write(f"Subtipo: {row.get('subtipo','')}")
-            st.write(f"Roca: {row.get('roca','')}")
-            st.write(f"Color: {row.get('color','')}")
-            st.write(f"Observaciones: {row.get('observaciones','')}")
-
-            if row.get("tipo") == "Sedimentaria":
-                st.markdown("**Características sedimentarias:**")
-                st.write(f"Textura: {row.get('textura','')}")
-                st.write(f"Estructura: {row.get('estructura','')}")
-                st.write(f"Mineral primario: {row.get('mimeral_pri','')}")
-                st.write(f"Mineral secundario: {row.get('mineral_secu','')}")
-                st.write(f"Clasto: {row.get('clasto_sed','')}")
-                st.write(f"Matriz: {row.get('matriz_sed','')}")
-                st.write(f"Cemento: {row.get('cemento_sed','')}")
-
-        with col2:
-            if row["img"]:
-                st.markdown(f"""
-                <a href="{row['img']}" target="_blank">
-                    <img src="{row['img']}" style="width:100%; border-radius:8px;">
-                </a>
-                """, unsafe_allow_html=True)
-
-                st.caption("🔍 Click en la imagen para ampliar")
-
-            if pd.notna(row["latitud"]) and pd.notna(row["longitud"]):
-                if st.button(f"📍 Ver en mapa {row['fullname']}"):
-
-                    st.session_state.mapa_punto = {
-                        "lat": row["latitud"],
-                        "lon": row["longitud"],
-                        "nombre": row["fullname"],
-                        "roca": row["roca"],
-                        "img": row["img"]
-                    }
-
-                    st.rerun()
+        renderizar_muestra_catalogo(row, context="cat")
 
 # --------------------------------
-# 🗺 MAPA GENERAL
+# 🗺 VISTA: MAPA GENERAL
 # --------------------------------
 elif vista == "🗺 Mapa":
+    st.header("Mapa de distribución de muestras (UNSA)")
 
-    import folium
-    from streamlit_folium import st_folium
-    from folium.plugins import MarkerCluster
-
-    st.header("Mapa general")
-
+    # Limpiar filas sin coordenadas validas
     df_mapa = df.dropna(subset=["latitud", "longitud"])
     
-    if not df_mapa.empty:
-        centro = [
-            df_mapa["latitud"].mean(),
-            df_mapa["longitud"].mean()
-        ]
-        zoom = 8
-    # --------------------------------
-    # ✅ JITTER PARA EVITAR SUPERPOSICIÓN
-    # --------------------------------
-    df_mapa = df_mapa.copy()
+    if df_mapa.empty:
+        st.warning("No hay muestras georeferenciadas para mostrar en el mapa.")
+        st.stop()
 
+    # ✅ Gestión de Jitter (pequeña variación para puntos superpuestos)
+    df_mapa = df_mapa.copy()
     df_mapa["lat_plot"] = df_mapa["latitud"]
     df_mapa["lon_plot"] = df_mapa["longitud"]
 
-    # aplicar pequeña variación si hay duplicados
     duplicados = df_mapa.duplicated(subset=["latitud", "longitud"], keep=False)
+    if duplicados.any():
+        # Aplicar dispersión muy pequeña (aprox 10-15 metros)
+        import numpy as np
+        df_mapa.loc[duplicados, "lat_plot"] += np.random.uniform(-0.0001, 0.0001, len(df_mapa[duplicados]))
+        df_mapa.loc[duplicados, "lon_plot"] += np.random.uniform(-0.0001, 0.0001, len(df_mapa[duplicados]))
 
-    df_mapa.loc[duplicados, "lat_plot"] += (
-        df_mapa.loc[duplicados].groupby(["latitud", "longitud"]).cumcount() * 0.0001
-    )
-
-    # ✅ si viene de una muestra → centrarse ahí
-    if st.session_state.mapa_zoom:
-        centro = [
-            st.session_state.mapa_zoom["lat"],
-            st.session_state.mapa_zoom["lon"]
-        ]
-        zoom = 12
+    # ✅ Configuración del Centro y Zoom
+    if st.session_state.mapa_zoom and st.session_state.mapa_punto:
+        # Prioridad si venimos de un clic en popup (aunque tu código actual no lo usa, lo dejo por estructura)
+        centro = [st.session_state.mapa_zoom["lat"], st.session_state.mapa_zoom["lon"]]
+        zoom_init = st.session_state.mapa_zoom["zoom"]
+    elif st.session_state.mapa_punto:
+        # Si venimos de 'Ubicar en mapa' del catálogo
+        p = st.session_state.mapa_punto
+        centro = [p["lat"], p["lon"]]
+        zoom_init = 14 # Zoom cercano para ver ubicación exacta
     else:
-        centro = [-25.5, -66]
-        zoom = 9
+        # Vista general (Salta, Argentina aprox)
+        centro = [-24.8, -65.4]
+        zoom_init = 6
 
-    mapa = folium.Map(location=centro, zoom_start=zoom)
-    cluster = MarkerCluster().add_to(mapa)
+    # ✅ Crear Mapa Folium
+    mapa = folium.Map(location=centro, zoom_start=zoom_init, tiles="OpenStreetMap")
+    cluster = MarkerCluster(name="Muestras UNSA").add_to(mapa)
     
+    # Añadir capas base opcionales
+    #folium.TileLayer('Stamen Terrain', name="Terreno").add_to(mapa)
+    folium.TileLayer('Stamen Terrain', name="Terreno", attr="Map tiles by Stamen Design, under CC BY 3.0. Data by OpenStreetMap, under ODbL.").add_to(mapa)
+    
+    folium.LayerControl().add_to(mapa)
+    
+    # ✅ Bucle de Marcadores
     for i, row in df_mapa.iterrows():
-
-        html = f"<b>{row['fullname']}</b><br>{row['roca']}"
-
-        if row["img"]:
-            html += f'<br><img src="{row["img"]}" width="200">'
-
-        # --------------------------------
-        # ✅ POPUP PRO
-        # --------------------------------
-        # ID real (clave)
-        id_text = f"{row['fullname']}|{i}"
-
-        # HTML visible
-        html_visible = f"""
-        <b>{row['fullname']}</b><br>
-        <b>Tipo:</b> {row.get('tipo','')}<br>
-        <b>Subtipo:</b> {row.get('subtipo','')}<br>
-        <b>Roca:</b> {row.get('roca','')}<br>
+        # HTML del Popup (diseño limpio)
+        popup_html = f"""
+        <div style="font-family: sans-serif; min-width: 200px;">
+            <div style="background-color: #f0f0f0; padding: 5px; border-radius: 4px; font-weight: bold; margin-bottom: 5px;">
+                {row['fullname']}
+            </div>
+            <b>Tipo:</b> {row.get('tipo','--')}<br>
+            <b>Roca:</b> {row.get('roca','--')}<br>
+            <b>Color:</b> {row.get('color','--')}<br>
         """
 
-        if row["img"]:
-            html_visible += f'<br><img src="{row["img"]}" width="150" style="border-radius:6px;">'
-
-        # ✅ combinación: TEXTO + HTML
+        # Imagen Cloudinary OPTIMIZADA en el popup (carga rápida al hacer clic)
+        if row["img_app"]:
+            popup_html += f"""
+            <div style="margin-top: 8px; text-align: center;">
+                <img src="{row['img_app']}" width="180" style="border-radius:6px; border: 1px solid #ccc;"><br>
+                <a href="{row['img_original']}" target="_blank" style="font-size: 0.8rem; text-decoration: none; color: #007bff;">🔍 Ver original/ampliar</a>
+            </div>
+            """
+        else:
+            popup_html += """<div style="color: gray; margin-top:5px; font-style: italic;">(Sin foto)</div>"""
         
-        popup_text = f"""
-        <div style="display:none">{id_text}</div>
-        {html_visible}
-        """
+        popup_html += "</div>"
 
+        # Definir color del icono por tipo
+        color_icon = 'blue'
+        tipo_lower = str(row.get('tipo','')).lower()
+        if 'sedimentaria' in tipo_lower: color_icon = 'green'
+        elif 'ígnea' in tipo_lower or 'ignea' in tipo_lower: color_icon = 'red'
+        elif 'metamórfica' in tipo_lower or 'metamorfica' in tipo_lower: color_icon = 'purple'
 
         folium.Marker(
             location=[row["lat_plot"], row["lon_plot"]],
-            popup=folium.Popup(popup_text, max_width=250)
+            popup=folium.Popup(popup_html, max_width=250),
+            icon=folium.Icon(color=color_icon, icon='info-sign')
         ).add_to(cluster)
-                
-        
-        
-        
 
-    map_data = st_folium(mapa, width=1000, height=600)
+    # ✅ Renderizar Mapa en Streamlit
+    # Agregamos key dinámica para forzar renderizado si cambia selección externa
+    map_key = "mapa_gral"
+    if st.session_state.mapa_punto:
+        map_key += f"_{st.session_state.mapa_punto['nombre']}"
 
-    # --------------------------------
-    # ✅ CLICK EN MAPA
-    # --------------------------------
-    import re
+    st_folium(mapa, width="100%", height=600, key=map_key, returned_objects=[])
 
-    if map_data and map_data.get("last_object_clicked_popup"):
-
-        texto = map_data["last_object_clicked_popup"]
-
-        # --------------------------------
-        # ✅ DETECTAR POR CÓDIGO (ROBUSTO)
-        # --------------------------------
-        lineas = texto.split("\n")
-
-        if len(lineas) > 0:
-            codigo = lineas[0].strip()
-
-            fila = df[df["fullname"] == codigo]
-
-            if not fila.empty:
-                fila = fila.iloc[0]
-
-                st.session_state.mapa_punto = {
-                    "nombre": fila["fullname"]
-                }
-
-                st.rerun()
+    # Instrucciones
+    st.info("💡 Haz clic en los marcadores (o números de cluster) para ver la info de la muestra y su foto optimizada. Usa el Catálogo para buscar muestras específicas y ubicarlas aquí.")
