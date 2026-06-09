@@ -60,15 +60,22 @@ def load_data():
 # --------------------------------
 def limpiar_url_imagen(texto):
     """Limpia el texto de la columna foto_url1 para obtener la URL base."""
-    if not texto:
+    # Si es un valor nulo real de Python o Pandas, fuera
+    if texto is None or pd.isna(texto):
         return None
+        
+    # Lo convertimos a string y limpiamos espacios rebeldes
     texto = str(texto).strip()
-    # Filtros comunes para celdas sin foto válida
-    if texto.lower() in ["0", "", "nan", "none", "sin foto", "no"]:
+    
+    # Filtros comunes para celdas sin foto válida o textos residuales
+    if texto.lower() in ["0", "", "nan", "none", "sin foto", "no", "<na>"]:
         return None
-    # Verifica que empiece como URL
+        
+    # 🔍 REGLA DE ORO: Si no empieza con protocolo web, NO es una URL válida
     if texto.startswith("http://") or texto.startswith("https://"):
         return texto
+        
+    # Cualquier otra cosa (números sueltos, textos de error) se descarta
     return None
 
 def optimizar_url_cloudinary(url_original):
