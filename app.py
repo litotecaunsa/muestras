@@ -79,7 +79,11 @@ def optimizar_url_cloudinary(url_original):
     q_auto: Calidad automática
     f_auto: Formato automático (webp, avif, etc.)
     """
-    if not url_original or "cloudinary.com" not in url_original:
+    # 🔍 NUEVA VALIDACIÓN: Si no es un string válido, devolvemos None inmediatamente
+    if not isinstance(url_original, str):
+        return None
+        
+    if "cloudinary.com" not in url_original:
         return url_original
     
     # Inyectar parámetros antes del nombre del archivo (después de /upload/)
