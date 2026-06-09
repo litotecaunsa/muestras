@@ -31,29 +31,21 @@
     # --------------------------------
     # GOOGLE SHEETS
     # --------------------------------
-    @st.cache_data
+    @st.cache_data(ttl=600)
     def load_data():
         scope = [
             "https://spreadsheets.google.com/feeds",
             "https://www.googleapis.com/auth/drive"
         ]
         
-    
-        
         creds_dict = st.secrets["gcp_service_account"]
-        
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(
-            creds_dict,
-            scope
-        )
-    
-       
-    
-        
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client = gspread.authorize(creds)
-        # 📄 
+        
+        # 📄 FIX CRUCIAL: Forzamos a buscar la pestaña exacta como en tu localhost
         sheet = client.open("db_litoteca_unsa").worksheet("MUESTRAS")
         return pd.DataFrame(sheet.get_all_records())
+    
     
     
     
