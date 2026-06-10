@@ -329,7 +329,7 @@ if vista == "🔎 Catálogo":
     with t1:
         codigo_input = st.text_input("Código completo", placeholder="ej: A-1IA1").upper().strip()
     with t2:
-        st.info("Ingresa el código 'fullname' exacto que figura en el Sheet.")
+        st.info("Ingresa el código de la roca. El mismo esta compuesto por código de color (A, R, V, etc.) seguido por un guión (-) y a continuación número de roca, puerta, estante y caja. Todos los caracteres deberan ser escritos en mayusculas")
 
     if codigo_input:
         df_busqueda = df[df["fullname"].astype(str) == codigo_input]
