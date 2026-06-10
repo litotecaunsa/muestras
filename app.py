@@ -401,7 +401,7 @@ if vista == "🔎 Catálogo":
 # 🗺 VISTA: MAPA GENERAL
 # --------------------------------
 elif vista == "🗺 Mapa":
-    st.header("Mapa de distribución de muestras (UNSA)")
+    st.header("Mapa de distribución de muestras")
 
     df_mapa = df.dropna(subset=["latitud", "longitud"])
     
