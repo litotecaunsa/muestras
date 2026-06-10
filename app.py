@@ -321,7 +321,7 @@ def renderizar_muestra_catalogo(row, context="catalogo"):
 # 🔎 VISTA: CATÁLOGO
 # --------------------------------
 if vista == "🔎 Catálogo":
-    st.header("Catálogo de muestras (Visualización bajo demanda)")
+    st.header("Catálogo de muestras")
 
     st.markdown("### 🔎 Buscar por código")
     t1, t2 = st.tabs(["Ingreso Manual", "Ayuda"])
