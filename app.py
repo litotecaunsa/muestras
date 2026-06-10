@@ -122,7 +122,7 @@ if "vista" not in st.session_state:
     st.session_state.vista = "🔎 Catálogo"
 
 import os
-ruta_logo = "logolito.png"
+ruta_logo = "logolito_unsa.png"
 
 # Contenedor del encabezado del Sidebar
 with st.sidebar.container():
