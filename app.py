@@ -21,7 +21,13 @@ if "foto_expandida" not in st.session_state:
 # --------------------------------
 # CONFIG
 # --------------------------------
-st.set_page_config(layout="wide", page_title="Litoteca UNSA")
+# Pasamos "logolito.png" al parámetro page_icon
+st.set_page_config(
+    layout="wide", 
+    page_title="Litoteca UNSA",
+    page_icon="logolito.png"
+)
+
 st.title("🪨 Litoteca UNSA")
 
 # --------------------------------
