@@ -175,7 +175,7 @@ if st.session_state.mapa_punto:
             st.write(f"**Subtipo:** {fila.get('subtipo','')}")
             st.write(f"**Color:** {fila.get('color','')}")
         
-        st.write(f"**Observaciones:** {fila.get('observaciones','')}")
+        st.sidebar.write(f"**Observaciones:** {fila.get('observaciones','')}")
 
         if fila.get("tipo") == "Sedimentaria":
             with st.sidebar.expander("Ver detalles sedimentarios", expanded=True):
@@ -398,17 +398,39 @@ if vista == "🔎 Catálogo":
         st.info("💡 Selecciona un **Tipo**, **Subtipo** o **Roca** en los filtros de arriba (o ingresa un código en el buscador) para empezar a explorar las muestras.")
 
 # --------------------------------
-# 🗺 VISTA: MAPA GENERAL
+# 🗺 VISTA: MAPA GENERAL (FILTRADO INTELIGENTE)
 # --------------------------------
 elif vista == "🗺 Mapa":
-    st.header("Mapa de distribución de muestras")
-
-    # Limpiar filas sin coordenadas validas
+    # Limpiar filas sin coordenadas válidas
     df_mapa = df.dropna(subset=["latitud", "longitud"])
     
     if df_mapa.empty:
         st.warning("No hay muestras georeferenciadas para mostrar en el mapa.")
         st.stop()
+
+    # -------------------------------------------------------------------------
+    # ✅ LÓGICA DE FILTRADO PARA ENFOQUE AISLADO
+    # -------------------------------------------------------------------------
+    # Verificamos si hay un punto seleccionado desde el catálogo
+    hay_punto_seleccionado = st.session_state.mapa_punto is not None
+
+    if hay_punto_seleccionado:
+        nombre_buscado = st.session_state.mapa_punto["nombre"]
+        st.header(f"📍 Ubicación de la Muestra: {nombre_buscado}")
+        
+        # Botón para salir del modo aislado y ver todo el mapa de nuevo
+        if st.button("🌍 Ver mapa con todas las muestras", use_container_width=True):
+            st.session_state.mapa_punto = None
+            st.rerun()
+            
+        # Filtramos el dataframe del mapa para que contenga ÚNICAMENTE esta muestra
+        df_mapa = df_mapa[df_mapa["fullname"] == nombre_buscado]
+        
+        if df_mapa.empty:
+            st.warning("La muestra seleccionada no tiene coordenadas válidas de GPS.")
+            st.stop()
+    else:
+        st.header("Mapa de distribución general de muestras (UNSA)")
 
     # ✅ Gestión de Jitter (pequeña variación para puntos superpuestos)
     df_mapa = df_mapa.copy()
@@ -421,59 +443,45 @@ elif vista == "🗺 Mapa":
         df_mapa.loc[duplicados, "lat_plot"] += np.random.uniform(-0.0001, 0.0001, len(df_mapa[duplicados]))
         df_mapa.loc[duplicados, "lon_plot"] += np.random.uniform(-0.0001, 0.0001, len(df_mapa[duplicados]))
 
-    # ✅ Configuración del Centro y Zoom (CORREGIDO)
-    if st.session_state.mapa_zoom and st.session_state.mapa_punto:
+    # ✅ Configuración del Centro y Zoom
+    if hay_punto_seleccionado:
+        # Si está aislada, centramos directo en ella con un zoom bien cercano
+        row_punto = df_mapa.iloc[0]
+        centro = [row_punto["lat_plot"], row_punto["lon_plot"]]
+        zoom_init = 15 
+    elif st.session_state.mapa_zoom:
         centro = [st.session_state.mapa_zoom["lat"], st.session_state.mapa_zoom["lon"]]
         zoom_init = st.session_state.mapa_zoom["zoom"]
-    elif st.session_state.mapa_punto:
-        p = st.session_state.mapa_punto
-        centro = [p["lat"], p["lon"]]
-        zoom_init = 15 # Zoom muy cercano si viene de "Ubicar en mapa"
     else:
-        # Vista general inicial (Cambiado a un zoom más cercano, ej: 12)
-        centro = [-24.728, -65.412] # Coordenadas aprox del campus UNSA / Salta
-        zoom_init = 7 # <-- AQUÍ CORREGIMOS EL ZOOM INICIAL (Antes era 6)
+        # Vista general (Salta / Campus UNSA)
+        centro = [-24.728, -65.412]
+        zoom_init = 7 
 
-    # ✅ Crear Mapa Folium (Sin mapa base por defecto para agregar los nuestros)
+    # ✅ Crear Mapa Folium
     mapa = folium.Map(location=centro, zoom_start=zoom_init, tiles=None)
     
-    # -------------------------------------------------------------------------
-    # ✅ NUEVOS MAPAS BASE: GOOGLE Y ARGENMAP
-    # -------------------------------------------------------------------------
-    # Google Satelital
+    # Capas Base (Google y Argenmap)
     folium.TileLayer(
         tiles="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
-        attr="Google",
-        name="Google Satelital",
-        overlay=False,
-        control=True
+        attr="Google", name="Google Satelital", overlay=False, control=True
     ).add_to(mapa)
 
-    # Google Terreno / Híbrido (Muy útil para geología)
     folium.TileLayer(
         tiles="https://mt1.google.com/vt/lyrs=p&x={x}&y={y}&z={z}",
-        attr="Google",
-        name="Google Terreno",
-        overlay=False,
-        control=True
+        attr="Google", name="Google Terreno", overlay=False, control=True
     ).add_to(mapa)
 
-    # Argenmap (Instituto Geográfico Nacional de Argentina)
     folium.TileLayer(
-        tiles="https://wms.ign.gob.ar/geoserver/gwc/service/tms/"
-                  "1.0.0/capabaseargenmap@EPSG%3A3857@png/{z}/{x}/{-y}.png",
-        attr="Instituto Geográfico Nacional (IGN)",
-        name="Argenmap (IGN)",
-        overlay=False,
-        control=True,
-        tms=True # Argenmap requiere inversión del eje Y en formato TMS
+        tiles="https://wms.ign.gob.ar/geoserver/gwc/service/tms/1.0.0/capabaseargenmap@EPSG%3A3857@png/{z}/{x}/{y}.png",
+        attr="Instituto Geográfico Nacional (IGN)", name="Argenmap (IGN)", overlay=False, control=True, tms=True
     ).add_to(mapa)
-    # -------------------------------------------------------------------------
 
-    # Crear el cluster de marcadores
-    cluster = MarkerCluster(name="Muestras UNSA").add_to(mapa)
-    
-    # Control de capas (Para que el usuario elija entre Google Satelital, Terreno o Argenmap)
+    # Si hay muchas muestras, usamos clusters. Si es una sola, no hace falta clusterizar
+    if len(df_mapa) > 1:
+        contenedor_puntos = MarkerCluster(name="Muestras UNSA").add_to(mapa)
+    else:
+        contenedor_puntos = mapa # Añadir directo al mapa si es el punto aislado
+
     folium.LayerControl(position="topright", collapsed=False).add_to(mapa)
     
     # ✅ Bucle de Marcadores
@@ -506,17 +514,25 @@ elif vista == "🗺 Mapa":
         elif 'ígnea' in tipo_lower or 'ignea' in tipo_lower: color_icon = 'red'
         elif 'metamórfica' in tipo_lower or 'metamorfica' in tipo_lower: color_icon = 'purple'
 
+        # Si es la muestra buscada, cambiamos el icono por uno especial (estrella) para que resalte
+        icono_tipo = 'info-sign'
+        if hay_punto_seleccionado:
+            icono_tipo = 'star' # Ícono de estrella para la destacada
+
         folium.Marker(
             location=[row["lat_plot"], row["lon_plot"]],
             popup=folium.Popup(popup_html, max_width=250),
-            icon=folium.Icon(color=color_icon, icon='info-sign')
-        ).add_to(cluster)
+            icon=folium.Icon(color=color_icon, icon=icono_tipo)
+        ).add_to(contenedor_puntos)
 
     # ✅ Renderizar Mapa en Streamlit
     map_key = "mapa_gral"
-    if st.session_state.mapa_punto:
+    if hay_punto_seleccionado:
         map_key += f"_{st.session_state.mapa_punto['nombre']}"
 
     st_folium(mapa, width="100%", height=600, key=map_key, returned_objects=[])
 
-    st.info("💡 Haz clic en los marcadores (o números de cluster) para ver la info de la muestra y su foto optimizada. Usa el Catálogo para buscar muestras específicas y ubicarlas aquí.")
+    if hay_punto_seleccionado:
+        st.info("ℹ️ Estás viendo únicamente la muestra seleccionada. Toda su información detallada está disponible en el panel izquierdo (Sidebar).")
+    else:
+        st.info("💡 Haz clic en los marcadores o clusters para explorar las muestras georeferenciadas de la UNSA.")
