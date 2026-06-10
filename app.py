@@ -110,12 +110,45 @@ df["img_app"] = df["img_original"].apply(optimizar_url_cloudinary)
 df["img_app"] = df["img_app"].where(df["img_app"].notna(), None)
 
 # --------------------------------
-# ✅ CONTROL DE VISTA
+# ✅ CONTROL DE VISTA Y LOGO (ESTILO INTA - ADAPTATIVO)
 # --------------------------------
 if "vista" not in st.session_state:
     st.session_state.vista = "🔎 Catálogo"
 
-st.sidebar.title("Menú UNSA")
+import os
+ruta_logo = "logolito.png"
+
+# Contenedor del encabezado del Sidebar
+with st.sidebar.container():
+    st.markdown(
+        """
+        <style>
+        .sidebar-header {
+            text-align: center;
+            padding: 10px 0px;
+        }
+        .sidebar-title {
+            font-size: 1.6rem !important;
+            font-weight: 700 !important;
+            /* Eliminamos el color fijo para que sea adaptativo (blanco en Dark Mode) */
+            margin-top: 15px;
+            margin-bottom: 0px;
+            text-align: center;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+    
+    st.markdown('<div class="sidebar-header">', unsafe_allow_html=True)
+    
+    if os.path.exists(ruta_logo):
+        st.image(ruta_logo, use_container_width=True)
+    
+    st.markdown('<p class="sidebar-title">Panel de Control</p>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
 
 # --------------------------------
 # ✅ DETALLE EN SIDEBAR (Cuando se selecciona en mapa)
