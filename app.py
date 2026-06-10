@@ -403,12 +403,14 @@ if vista == "🔎 Catálogo":
 elif vista == "🗺 Mapa":
     st.header("Mapa de distribución de muestras")
 
+    # Limpiar filas sin coordenadas validas
     df_mapa = df.dropna(subset=["latitud", "longitud"])
     
     if df_mapa.empty:
         st.warning("No hay muestras georeferenciadas para mostrar en el mapa.")
         st.stop()
 
+    # ✅ Gestión de Jitter (pequeña variación para puntos superpuestos)
     df_mapa = df_mapa.copy()
     df_mapa["lat_plot"] = df_mapa["latitud"]
     df_mapa["lon_plot"] = df_mapa["longitud"]
@@ -419,35 +421,74 @@ elif vista == "🗺 Mapa":
         df_mapa.loc[duplicados, "lat_plot"] += np.random.uniform(-0.0001, 0.0001, len(df_mapa[duplicados]))
         df_mapa.loc[duplicados, "lon_plot"] += np.random.uniform(-0.0001, 0.0001, len(df_mapa[duplicados]))
 
+    # ✅ Configuración del Centro y Zoom (CORREGIDO)
     if st.session_state.mapa_zoom and st.session_state.mapa_punto:
         centro = [st.session_state.mapa_zoom["lat"], st.session_state.mapa_zoom["lon"]]
         zoom_init = st.session_state.mapa_zoom["zoom"]
     elif st.session_state.mapa_punto:
         p = st.session_state.mapa_punto
         centro = [p["lat"], p["lon"]]
-        zoom_init = 14
+        zoom_init = 15 # Zoom muy cercano si viene de "Ubicar en mapa"
     else:
-        centro = [-24.8, -65.4]
-        zoom_init = 6
+        # Vista general inicial (Cambiado a un zoom más cercano, ej: 12)
+        centro = [-24.728, -65.412] # Coordenadas aprox del campus UNSA / Salta
+        zoom_init = 7 # <-- AQUÍ CORREGIMOS EL ZOOM INICIAL (Antes era 6)
 
-    mapa = folium.Map(location=centro, zoom_start=zoom_init, tiles="OpenStreetMap")
+    # ✅ Crear Mapa Folium (Sin mapa base por defecto para agregar los nuestros)
+    mapa = folium.Map(location=centro, zoom_start=zoom_init, tiles=None)
+    
+    # -------------------------------------------------------------------------
+    # ✅ NUEVOS MAPAS BASE: GOOGLE Y ARGENMAP
+    # -------------------------------------------------------------------------
+    # Google Satelital
+    folium.TileLayer(
+        tiles="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+        attr="Google",
+        name="Google Satelital",
+        overlay=False,
+        control=True
+    ).add_to(mapa)
+
+    # Google Terreno / Híbrido (Muy útil para geología)
+    folium.TileLayer(
+        tiles="https://mt1.google.com/vt/lyrs=p&x={x}&y={y}&z={z}",
+        attr="Google",
+        name="Google Terreno",
+        overlay=False,
+        control=True
+    ).add_to(mapa)
+
+    # Argenmap (Instituto Geográfico Nacional de Argentina)
+    folium.TileLayer(
+        tiles="https://wms.ign.gob.ar/geoserver/gwc/service/tms/"
+                  "1.0.0/capabaseargenmap@EPSG%3A3857@png/{z}/{x}/{-y}.png",
+        attr="Instituto Geográfico Nacional (IGN)",
+        name="Argenmap (IGN)",
+        overlay=False,
+        control=True,
+        tms=True # Argenmap requiere inversión del eje Y en formato TMS
+    ).add_to(mapa)
+    # -------------------------------------------------------------------------
+
+    # Crear el cluster de marcadores
     cluster = MarkerCluster(name="Muestras UNSA").add_to(mapa)
     
-    folium.TileLayer('Stamen Terrain', name="Terreno", attr="Map tiles by Stamen Design, under CC BY 3.0. Data by OpenStreetMap, under ODbL.").add_to(mapa)
-    folium.LayerControl().add_to(mapa)
+    # Control de capas (Para que el usuario elija entre Google Satelital, Terreno o Argenmap)
+    folium.LayerControl(position="topright", collapsed=False).add_to(mapa)
     
+    # ✅ Bucle de Marcadores
     for i, row in df_mapa.iterrows():
         popup_html = f"""
         <div style="font-family: sans-serif; min-width: 200px;">
-            <div style="background-color: #f0f0f0; padding: 5px; border-radius: 4px; font-weight: bold; margin-bottom: 5px;">
+            <div style="background-color: #f0f0f0; padding: 5px; border-radius: 4px; font-weight: bold; margin-bottom: 5px; color: black;">
                 {row['fullname']}
             </div>
-            <b>Tipo:</b> {row.get('tipo','--')}<br>
-            <b>Roca:</b> {row.get('roca','--')}<br>
-            <b>Color:</b> {row.get('color','--')}<br>
+            <span style="color: black;"><b>Tipo:</b> {row.get('tipo','--')}</span><br>
+            <span style="color: black;"><b>Roca:</b> {row.get('roca','--')}</span><br>
+            <span style="color: black;"><b>Color:</b> {row.get('color','--')}</span><br>
         """
 
-        if isinstance(row["img_app"], str) and row["img_app"].startswith("http"):
+        if row["img_app"]:
             popup_html += f"""
             <div style="margin-top: 8px; text-align: center;">
                 <img src="{row['img_app']}" width="180" style="border-radius:6px; border: 1px solid #ccc;"><br>
@@ -471,6 +512,7 @@ elif vista == "🗺 Mapa":
             icon=folium.Icon(color=color_icon, icon='info-sign')
         ).add_to(cluster)
 
+    # ✅ Renderizar Mapa en Streamlit
     map_key = "mapa_gral"
     if st.session_state.mapa_punto:
         map_key += f"_{st.session_state.mapa_punto['nombre']}"
