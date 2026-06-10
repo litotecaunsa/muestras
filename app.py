@@ -536,3 +536,36 @@ elif vista == "🗺 Mapa":
         st.info("ℹ️ Estás viendo únicamente la muestra seleccionada. Toda su información detallada está disponible en el panel izquierdo (Sidebar).")
     else:
         st.info("💡 Haz clic en los marcadores o clusters para explorar las muestras georeferenciadas de la UNSA.")
+# --------------------------------
+# ✅ CRÉDITOS Y PARTICIPANTES (AL FINAL DEL SIDEBAR)
+# --------------------------------
+st.sidebar.markdown("---")
+with st.sidebar.expander("👥 Créditos del Proyecto", expanded=False):
+    st.markdown(
+        """
+        <div style="font-size: 0.9rem;">
+            <b>INTEGRANTES LITOTECA</b><br>
+            <span style="color: gray; font-size: 0.8rem;">Desarrollo de base de datos y biblioteca de fotografías:</span>
+            <ul style="margin-top: 5px; margin-bottom: 10px; padding-left: 20px;">
+                <li>Emiliano Romero</li>
+                <li>Álvaro Rodríguez</li>
+                <li>Camila Leiva</li>
+                <li>Sonia Tapia</li>
+                <li>Ana Rebuffi</li>
+                <li>Martina Contreras</li>
+                <li>Julieta Vargas</li>
+                <li>Nahuel Díaz</li>
+                <li>Ernestina Elena</li>
+                <li>Julieta Cancinos</li>
+                <li>Gastón Maidana</li>
+                <li>Lourdes Isasmendi</li>
+                <li>Fabiola Cruz</li>
+                <li>Gastón Santillán</li>
+                <li>Agustín Beleizán</li>
+            </ul>
+            <b>Dirección:</b><br>Dr. Rubén Filipovich<br><br>
+            <b>Desarrollo de aplicación:</b><br>MSc. Hernán Elena (INTA)
+        </div>
+        """, 
+        unsafe_allow_html=True
+    )
