@@ -209,9 +209,188 @@ vista = st.sidebar.radio(
 
 st.session_state.vista = vista
 
+
+
 # --------------------------------
 # FUNCIONES AUXILIARES DE RENDERIZADO
 # --------------------------------
+import io
+import os
+import requests
+from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+
+def generar_pdf_ficha(row):
+    """Genera un archivo PDF con el diseño institucional y la foto de la muestra."""
+    buffer = io.BytesIO()
+    
+    # 1. Configuración del documento (Márgenes de 1.5 cm)
+    margin = 42 # puntos (aprox 1.5cm)
+    doc = SimpleDocTemplate(
+        buffer, 
+        pagesize=letter,
+        rightMargin=margin, leftMargin=margin, 
+        topMargin=margin, bottomMargin=margin
+    )
+    story = []
+    styles = getSampleStyleSheet()
+    
+    # Ancho disponible real para el contenido y la foto
+    ancho_disponible = letter[0] - (2 * margin) # 612 - 84 = 528 puntos
+
+    # -------------------------------------------------------------------------
+    # ✅ SECCIÓN ENCABEZADO INSTITUCIONAL (Tabla Invisible)
+    # -------------------------------------------------------------------------
+    logo_path = "logolito.png" # Usamos la misma variable que tienes configurada
+    texto_encabezado = """
+    <b>REPOSITORIO DE ROCAS</b><br/>
+    Litoteca - Geología<br/>
+    Facultad de Cs. Naturales - UNSA
+    """
+    
+    style_header = ParagraphStyle(
+        'HeaderStyle',
+        parent=styles['Normal'],
+        fontName='Helvetica',
+        fontSize=11,
+        leading=15,
+        alignment=1 # Centrado
+    )
+    
+    # Maquetamos el encabezado en una tabla para alinear logo y texto lateralmente
+    p_header = Paragraph(texto_encabezado, style_header)
+    
+    if os.path.exists(logo_path):
+        # Escalamos el logo de manera fija para el membrete superior
+        img_logo = RLImage(logo_path, width=50, height=50)
+        # Tres columnas: Logo, Texto Centrado, Espacio vacío simétrico para balancear el centro
+        tabla_header = Table([[img_logo, p_header, ""]], colWidths=[60, ancho_disponible - 120, 60])
+    else:
+        tabla_header = Table([[p_header]], colWidths=[ancho_disponible])
+        
+    tabla_header.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('ALIGN', (1,0), (1,0), 'CENTER'),
+    ]))
+    story.append(tabla_header)
+    story.append(Spacer(1, 15))
+    
+    # Línea divisoria decorativa institucional
+    linea_decorativa = Table([[""]], colWidths=[ancho_disponible], rowHeights=[2])
+    linea_decorativa.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (0,0), colors.HexColor('#FF4B4B')), # Color acento Streamlit/UNSA
+    ]))
+    story.append(linea_decorativa)
+    story.append(Spacer(1, 15))
+
+    # -------------------------------------------------------------------------
+    # ✅ TÍTULO DE LA FICHA
+    # -------------------------------------------------------------------------
+    style_titulo = ParagraphStyle(
+        'TituloStyle',
+        fontName='Helvetica-Bold',
+        fontSize=18,
+        leading=22,
+        textColor=colors.HexColor('#1E1E1E'),
+        alignment=0 # Izquierda
+    )
+    story.append(Paragraph(f"Ficha Técnica Muestra: {row.get('fullname', 'S/N')}", style_titulo))
+    story.append(Spacer(1, 12))
+
+    # -------------------------------------------------------------------------
+    # ✅ TABLA DE DATOS GEOLÓGICOS
+    # -------------------------------------------------------------------------
+    style_celda_negrita = ParagraphStyle('CeldaN', fontName='Helvetica-Bold', fontSize=10, leading=13)
+    style_celda_normal = ParagraphStyle('CeldaD', fontName='Helvetica', fontSize=10, leading=13)
+    
+    # Datos básicos comunes
+    datos_tabla = [
+        [Paragraph("Código Fullname:", style_celda_negrita), Paragraph(str(row.get('fullname','—')), style_celda_normal),
+         Paragraph("Tipo de Roca:", style_celda_negrita), Paragraph(str(row.get('tipo','—')), style_celda_normal)],
+        [Paragraph("Subtipo:", style_celda_negrita), Paragraph(str(row.get('subtipo','—')), style_celda_normal),
+         Paragraph("Nombre Roca:", style_celda_negrita), Paragraph(str(row.get('roca','—')), style_celda_normal)],
+        [Paragraph("Color característico:", style_celda_negrita), Paragraph(str(row.get('color','—')), style_celda_normal),
+         Paragraph("Coordenadas (Lat/Lon):", style_celda_negrita), Paragraph(f"{row.get('latitud','—')}, {row.get('longitud','—')}", style_celda_normal)]
+    ]
+    
+    # Agregar filas extra únicamente si es de tipo Sedimentaria
+    if str(row.get('tipo','')).lower() == 'sedimentaria':
+        datos_tabla.extend([
+            [Paragraph("Textura / Estructura:", style_celda_negrita), Paragraph(f"{row.get('textura','—')} / {row.get('estructura','—')}", style_celda_normal),
+             Paragraph("Minerales (Pri/Sec):", style_celda_negrita), Paragraph(f"{row.get('mimeral_pri','—')} / {row.get('mineral_secu','—')}", style_celda_normal)],
+            [Paragraph("Fábrica (Clasto/Matriz/Cem):", style_celda_negrita), Paragraph(f"C: {row.get('clasto_sed','—')} | M: {row.get('matriz_sed','—')} | C: {row.get('cemento_sed','—')}", style_celda_normal),
+             "", ""]
+        ])
+        
+    # Añadir observaciones ocupando todo el ancho inferior de la tabla
+    p_obs_label = Paragraph("Observaciones:", style_celda_negrita)
+    p_obs_content = Paragraph(str(row.get('observaciones','Sin observaciones particulares.')), style_celda_normal)
+    datos_tabla.append([p_obs_label, p_obs_content, "", ""])
+    
+    # Construcción formal de la tabla en ReportLab (4 columnas)
+    w_col = ancho_disponible / 4.0
+    t_datos = Table(datos_tabla, colWidths=[w_col*1.1, w_col*0.9, w_col*1.1, w_col*0.9])
+    
+    # Estilos visuales de la tabla geológica (Limpia y grisácea)
+    estilo_tabla = [
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#F9F9F9')),
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#E0E0E0')),
+        ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#CCCCCC')),
+        ('TOPPADDING', (0,0), (-1,-1), 6),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+        # Expansión de celdas para la fila de observaciones (ocupa de columna 1 a la 3)
+        ('SPAN', (1, len(datos_tabla)-1), (3, len(datos_tabla)-1)),
+    ]
+    
+    if str(row.get('tipo','')).lower() == 'sedimentaria':
+        # Expandir la última celda de fábrica sobrante
+        estilo_tabla.append(('SPAN', (1, len(datos_tabla)-2), (3, len(datos_tabla)-2)))
+        
+    t_datos.setStyle(TableStyle(estilo_tabla))
+    story.append(t_datos)
+    story.append(Spacer(1, 20))
+
+    # -------------------------------------------------------------------------
+    # ✅ SECCIÓN DE FOTOGRAFÍA AMPLADA A TODO EL ANCHO
+    # -------------------------------------------------------------------------
+    if isinstance(row.get("img_original"), str) and row["img_original"].startswith("http"):
+        try:
+            # Descargamos temporalmente los bytes de la imagen original en alta resolución
+            respuesta = requests.get(row["img_original"], timeout=10)
+            if respuesta.status_code == 200:
+                imagen_bytes = io.BytesIO(respuesta.content)
+                
+                # Leemos dimensiones de forma nativa con PIL para respetar el aspect ratio original
+                from PIL import Image as PILImage
+                con_pil = PILImage.open(imagen_bytes)
+                ancho_orig, alto_orig = con_pil.size
+                
+                # Escalamos calculando la proporción exacta para cubrir el ancho de página (528 ptos)
+                proporcion = ancho_disponible / float(ancho_orig)
+                alto_escalado = alto_orig * proporcion
+                
+                # Si la imagen es extremadamente alta y no va a entrar en la primera hoja, ReportLab la pasará a la segunda automáticamente.
+                img_pdf = RLImage(imagen_bytes, width=ancho_disponible, height=alto_escalado)
+                
+                story.append(Paragraph("<b>Registro Fotográfico (Alta Resolución):</b>", style_celda_negrita))
+                story.append(Spacer(1, 8))
+                story.append(img_pdf)
+        except Exception as e:
+            # Si falla la descarga de internet por timeout o DNS, añade aviso en vez de romper la app
+            story.append(Paragraph(f"<i>No se pudo cargar la imagen remota en el PDF. (Error: {e})</i>", style_celda_normal))
+
+    # Construir PDF
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+
+
+
 def renderizar_muestra_catalogo(row, context="catalogo"):
     """Dibuja una muestra en el catálogo/buscador con lógica 'On Demand'."""
     st.markdown("---")
@@ -316,7 +495,27 @@ def renderizar_muestra_catalogo(row, context="catalogo"):
                 """, unsafe_allow_html=True)
         else:
             st.warning("⚠️ Muestra sin foto disponible")
-
+        # ---------------------------------------------------------
+        # ✅ NUEVA ACCIÓN: DESCARGAR FICHA TÉCNICA EN PDF
+        # ---------------------------------------------------------
+        st.markdown("---") # Una pequeña línea de separación interna
+        
+        # Al hacer clic, ejecuta la función del ReportLab en segundo plano
+        with st.spinner("Generando ficha técnica en PDF..."):
+            try:
+                pdf_datos = generar_pdf_ficha(row)
+                
+                st.download_button(
+                    label="📄 Descargar Ficha",
+                    data=pdf_datos,
+                    file_name=f"Ficha_{row['fullname']}.pdf",
+                    mime="application/pdf",
+                    key=f"download_{context}_{row['fullname']}",
+                    use_container_width=True
+                )
+            except Exception as error_pdf:
+                st.error(f"Error PDF: {error_pdf}")
+                
 # --------------------------------
 # 🔎 VISTA: CATÁLOGO
 # --------------------------------
