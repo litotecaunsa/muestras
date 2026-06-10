@@ -191,7 +191,7 @@ if st.session_state.mapa_punto:
         sb_url_valida = isinstance(fila["img_app"], str) and fila["img_app"].startswith("http")
         if sb_url_valida:
             st.sidebar.image(fila["img_app"], caption=f"Muestra {fila['fullname']} (Vista rápida)", use_container_width=True)
-            st.sidebar.markdown(f"[🔍 Ver en Alta Resolución]({fila['img_original']})")
+            st.sidebar.markdown(f"🔍[ Ver en Alta Resolución]({fila['img_original']})")
 
         if st.sidebar.button("❌ Limpiar selección", use_container_width=True):
             st.session_state.mapa_punto = None
