@@ -356,16 +356,25 @@ def generar_pdf_ficha(row):
     story.append(Spacer(1, 20))
 
     # -------------------------------------------------------------------------
-    # ✅ SECCIÓN DE FOTOGRAFÍA AMPLADA A TODO EL ANCHO
+    # ✅ SECCIÓN DE FOTOGRAFÍA OPTIMIZADA (CORREGIDA)
     # -------------------------------------------------------------------------
     if isinstance(row.get("img_original"), str) and row["img_original"].startswith("http"):
         try:
-            # Descargamos temporalmente los bytes de la imagen original en alta resolución
-            respuesta = requests.get(row["img_original"], timeout=10)
+            url_foto = row["img_original"]
+            
+            # 🚀 TRUCO DE CLOUDINARY CORREGIDO: Usamos url_foto correctamente
+            if "cloudinary.com" in url_foto and "/image/upload/" in url_foto:
+                # Le pedimos a Cloudinary: calidad automática (q_auto), formato óptimo (f_auto)
+                # y un ancho máximo de 1000 píxeles (w_1000).
+                url_foto = url_foto.replace("/image/upload/", "/image/upload/f_auto,q_auto,w_1000/")
+            
+            # Descargamos la versión súper liviana
+            respuesta = requests.get(url_foto, timeout=10)
+            
             if respuesta.status_code == 200:
                 imagen_bytes = io.BytesIO(respuesta.content)
                 
-                # Leemos dimensiones de forma nativa con PIL para respetar el aspect ratio original
+                # Leemos dimensiones con PIL para respetar el aspect ratio original
                 from PIL import Image as PILImage
                 con_pil = PILImage.open(imagen_bytes)
                 ancho_orig, alto_orig = con_pil.size
@@ -374,14 +383,12 @@ def generar_pdf_ficha(row):
                 proporcion = ancho_disponible / float(ancho_orig)
                 alto_escalado = alto_orig * proporcion
                 
-                # Si la imagen es extremadamente alta y no va a entrar en la primera hoja, ReportLab la pasará a la segunda automáticamente.
                 img_pdf = RLImage(imagen_bytes, width=ancho_disponible, height=alto_escalado)
                 
-                story.append(Paragraph("<b>Registro Fotográfico (Alta Resolución):</b>", style_celda_negrita))
+                story.append(Paragraph("<b>Registro Fotográfico (Optimizado):</b>", style_celda_negrita))
                 story.append(Spacer(1, 8))
                 story.append(img_pdf)
         except Exception as e:
-            # Si falla la descarga de internet por timeout o DNS, añade aviso en vez de romper la app
             story.append(Paragraph(f"<i>No se pudo cargar la imagen remota en el PDF. (Error: {e})</i>", style_celda_normal))
 
     # Construir PDF
