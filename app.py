@@ -371,17 +371,31 @@ if vista == "🔎 Catálogo":
     if roca_sel != "Todos":
         df_filtrado = df_filtrado[df_filtrado["roca"] == roca_sel]
 
-    # ✅ RESULTADOS
-    MAX_MUESTRAS_CATALOGO = 50
-    total_resultados = len(df_filtrado)
-    st.write(f"🔎 Resultados encontrados: **{total_resultados}**")
+    # ✅ RESULTADOS INTELIGENTES (Solo bajo demanda de filtros)
+    st.markdown("---")
+    
+    # Verificamos si el usuario activó algún filtro
+    ha_filtrado = (tipo_sel != "Todos") or (subtipo_sel != "Todos") or (roca_sel != "Todos")
 
-    if total_resultados > MAX_MUESTRAS_CATALOGO:
-        st.warning(f"Mostrando solo las primeras {MAX_MUESTRAS_CATALOGO} muestras para optimizar carga. Usa los filtros o el buscador para refinar.")
-        df_filtrado = df_filtrado.head(MAX_MUESTRAS_CATALOGO)
+    if ha_filtrado:
+        total_resultados = len(df_filtrado)
+        st.write(f"🔎 Resultados encontrados: **{total_resultados}**")
 
-    for _, row in df_filtrado.iterrows():
-        renderizar_muestra_catalogo(row, context="cat")
+        if total_resultados == 0:
+            st.info("🥪 No se encontraron muestras que coincidan con la combinación de filtros seleccionada.")
+        else:
+            # Ponemos un límite de cortesía por rendimiento, pero ahora tiene sentido
+            MAX_MUESTRAS_CATALOGO = 20 
+            if total_resultados > MAX_MUESTRAS_CATALOGO:
+                st.warning(f"Mostrando las primeras {MAX_MUESTRAS_CATALOGO} muestras. Refina los filtros para acotar la búsqueda.")
+                df_filtrado = df_filtrado.head(MAX_MUESTRAS_CATALOGO)
+
+            # Renderizado del bucle principal
+            for _, row in df_filtrado.iterrows():
+                renderizar_muestra_catalogo(row, context="cat")
+    else:
+        # Mensaje amigable cuando la pantalla está limpia
+        st.info("💡 Selecciona un **Tipo**, **Subtipo** o **Roca** en los filtros de arriba (o ingresa un código en el buscador) para empezar a explorar las muestras.")
 
 # --------------------------------
 # 🗺 VISTA: MAPA GENERAL
