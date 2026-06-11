@@ -443,7 +443,7 @@ def renderizar_muestra_catalogo(row, context="catalogo"):
                 
                 
                 # Sección 3: Matriz de Soporte (Clasto, Matriz, Cemento) adaptativa
-                st.markdown("#### 🔬 Análisis de Componentes (Fábrica)")
+                st.markdown("#### 🔬 Análisis de Componentes")
                 cc1, cc2, cc3 = st.columns(3)
 
                 with cc1:
