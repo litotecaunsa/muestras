@@ -160,12 +160,12 @@ with st.sidebar.container():
 # ✅ DETALLE EN SIDEBAR (Cuando se selecciona en mapa)
 # --------------------------------
 if st.session_state.mapa_punto:
-    seleccion = df[df["fullname"] == st.session_state.mapa_punto["nombre"]]
+    seleccion = df[df["samplebox"] == st.session_state.mapa_punto["nombre"]]
     
     if not seleccion.empty:
         fila = seleccion.iloc[0]
         st.sidebar.markdown("---")
-        st.sidebar.subheader(f"📄 Muestra: {fila['fullname']}")
+        st.sidebar.subheader(f"📄 Muestra: {fila['samplebox']}")
 
         col_sb1, col_sb2 = st.sidebar.columns(2)
         with col_sb1:
@@ -190,7 +190,7 @@ if st.session_state.mapa_punto:
         # 📄 FIX DEL ERROR: Forzamos validación estricta de string con http en la barra lateral
         sb_url_valida = isinstance(fila["img_app"], str) and fila["img_app"].startswith("http")
         if sb_url_valida:
-            st.sidebar.image(fila["img_app"], caption=f"Muestra {fila['fullname']} (Vista rápida)", use_container_width=True)
+            st.sidebar.image(fila["img_app"], caption=f"Muestra {fila['samplebox']} (Vista rápida)", use_container_width=True)
             st.sidebar.markdown(f"🔍[ Ver en Alta Resolución]({fila['img_original']})")
 
         if st.sidebar.button("❌ Limpiar selección", use_container_width=True):
@@ -297,7 +297,7 @@ def generar_pdf_ficha(row):
         textColor=colors.HexColor('#1E1E1E'),
         alignment=0 # Izquierda
     )
-    story.append(Paragraph(f"Ficha Técnica Muestra: {row.get('fullname', 'S/N')}", style_titulo))
+    story.append(Paragraph(f"Ficha Técnica Muestra: {row.get('samplebox', 'S/N')}", style_titulo))
     story.append(Spacer(1, 12))
 
     # -------------------------------------------------------------------------
@@ -308,7 +308,7 @@ def generar_pdf_ficha(row):
     
     # Datos básicos comunes
     datos_tabla = [
-        [Paragraph("Código Fullname:", style_celda_negrita), Paragraph(str(row.get('fullname','—')), style_celda_normal),
+        [Paragraph("Código samplebox:", style_celda_negrita), Paragraph(str(row.get('samplebox','—')), style_celda_normal),
          Paragraph("Tipo de Roca:", style_celda_negrita), Paragraph(str(row.get('tipo','—')), style_celda_normal)],
         [Paragraph("Subtipo:", style_celda_negrita), Paragraph(str(row.get('subtipo','—')), style_celda_normal),
          Paragraph("Nombre Roca:", style_celda_negrita), Paragraph(str(row.get('roca','—')), style_celda_normal)],
@@ -405,7 +405,7 @@ def renderizar_muestra_catalogo(row, context="catalogo"):
 
     with col1:
         # 🏷️ Cabecera principal con diseño de tarjeta
-        st.markdown(f"### 🪨 Muestra: <span style='color:#FF4B4B;'>{row.get('fullname', context)}</span>", unsafe_allow_html=True)
+        st.markdown(f"### 🪨 Muestra: <span style='color:#FF4B4B;'>{row.get('samplebox', context)}</span>", unsafe_allow_html=True)
         
         # 🗂️ Ficha de Datos Básicos en columnas limpias
         c1, c2, c3 = st.columns(3)
@@ -465,11 +465,11 @@ def renderizar_muestra_catalogo(row, context="catalogo"):
     with col2:
         st.write("**Acciones:**")
         if pd.notna(row["latitud"]) and pd.notna(row["longitud"]):
-            if st.button(f"📍 Ubicar en Mapa", key=f"map_{context}_{row['fullname']}"):
+            if st.button(f"📍 Ubicar en Mapa", key=f"map_{context}_{row['samplebox']}"):
                 st.session_state.mapa_punto = {
                     "lat": row["latitud"],
                     "lon": row["longitud"],
-                    "nombre": row["fullname"]
+                    "nombre": row["samplebox"]
                 }
                 st.session_state.mapa_zoom = None
                 st.session_state.vista = "🗺 Mapa"
@@ -481,7 +481,7 @@ def renderizar_muestra_catalogo(row, context="catalogo"):
         url_valida = isinstance(row["img_app"], str) and row["img_app"].startswith("http")
 
         if url_valida:
-            current_code = row['fullname']
+            current_code = row['samplebox']
             is_expanded = (st.session_state.foto_expandida == current_code)
             label = "🔼 Ocultar Foto" if is_expanded else "📷 Ver Foto"
             
@@ -515,9 +515,9 @@ def renderizar_muestra_catalogo(row, context="catalogo"):
                 st.download_button(
                     label="📄 Descargar Ficha",
                     data=pdf_datos,
-                    file_name=f"Ficha_{row['fullname']}.pdf",
+                    file_name=f"Ficha_{row['samplebox']}.pdf",
                     mime="application/pdf",
-                    key=f"download_{context}_{row['fullname']}",
+                    key=f"download_{context}_{row['samplebox']}",
                     use_container_width=True
                 )
             except Exception as error_pdf:
@@ -529,24 +529,38 @@ def renderizar_muestra_catalogo(row, context="catalogo"):
 if vista == "🔎 Catálogo":
     st.header("Repositorio de rocas")
 
+    # 🆕 Función Callback para limpiar el buscador de forma segura
+    def limpiar_buscador():
+        st.session_state.busqueda_codigo = ""
+
+    # ✅ BUSCADOR
     st.markdown("### 🔎 Buscar por código")
     t1, t2 = st.tabs(["Ingreso Manual", "Ayuda"])
     
     with t1:
-        codigo_input = st.text_input("Código completo", placeholder="ej: A-1IA1").upper().strip()
+        # Mantenemos el key del widget
+        codigo_input = st.text_input("Código completo", placeholder="ej: 1IA1", key="busqueda_codigo").upper().strip()
     with t2:
-        st.info("Ingresa el código de la roca. El mismo esta compuesto por código de color (A, R, V, etc.) seguido por un guión (-) y a continuación número de roca, puerta, estante y caja. Todos los caracteres deberan ser escritos en mayusculas")
+        st.info("Ingresa el código de la roca. El mismo esta compuesto númenro de roca, puerta, estante y caja. Todos los caracteres deberan ser escritos en mayusculas")
 
+    # Renderizar Buscador
     if codigo_input:
-        df_busqueda = df[df["fullname"].astype(str) == codigo_input]
+        df_busqueda = df[df["samplebox"].astype(str) == codigo_input]
         
         if df_busqueda.empty:
             st.warning(f"No se encontró ninguna muestra con el código '{codigo_input}'")
+            # Usamos el callback si no hay resultados
+            st.button("🔄 Volver al catálogo completo", key="btn_volver_vacio", on_click=limpiar_buscador)
         else:
             st.success(f"Se encontró {len(df_busqueda)} coincidencia(s) para: {codigo_input}")
+            
+            # 🆕 BOTÓN DE RETORNO CON CALLBACK (Evita el StreamlitAPIException)
+            st.button("⬅️ Volver al catálogo completo", use_container_width=True, key="btn_volver_exito", on_click=limpiar_buscador)
+                
             for _, row in df_busqueda.iterrows():
                 renderizar_muestra_catalogo(row, context="search")
-            st.stop()
+            
+            st.stop() # Detener renderizado del catálogo general si hay búsqueda
 
     st.markdown("---")
     
@@ -630,7 +644,7 @@ elif vista == "🗺 Mapa":
             st.rerun()
             
         # Filtramos el dataframe del mapa para que contenga ÚNICAMENTE esta muestra
-        df_mapa = df_mapa[df_mapa["fullname"] == nombre_buscado]
+        df_mapa = df_mapa[df_mapa["samplebox"] == nombre_buscado]
         
         if df_mapa.empty:
             st.warning("La muestra seleccionada no tiene coordenadas válidas de GPS.")
@@ -695,7 +709,7 @@ elif vista == "🗺 Mapa":
         popup_html = f"""
         <div style="font-family: sans-serif; min-width: 200px;">
             <div style="background-color: #f0f0f0; padding: 5px; border-radius: 4px; font-weight: bold; margin-bottom: 5px; color: black;">
-                {row['fullname']}
+                {row['samplebox']}
             </div>
             <span style="color: black;"><b>Tipo:</b> {row.get('tipo','--')}</span><br>
             <span style="color: black;"><b>Roca:</b> {row.get('roca','--')}</span><br>
