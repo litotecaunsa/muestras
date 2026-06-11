@@ -385,7 +385,7 @@ def generar_pdf_ficha(row):
                 
                 img_pdf = RLImage(imagen_bytes, width=ancho_disponible, height=alto_escalado)
                 
-                story.append(Paragraph("<b>Registro Fotográfico (Optimizado):</b>", style_celda_negrita))
+                story.append(Paragraph("<b>Registro Fotográfico</b>", style_celda_negrita))
                 story.append(Spacer(1, 8))
                 story.append(img_pdf)
         except Exception as e:
