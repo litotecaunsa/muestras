@@ -28,7 +28,7 @@ st.set_page_config(
     page_icon="logolito.png"
 )
 
-st.title("🪨 Litoteca UNSA")
+st.title("💎 Litoteca UNSA")
 
 # --------------------------------
 # GOOGLE SHEETS
