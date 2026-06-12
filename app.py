@@ -622,7 +622,7 @@ if vista == "🔎 Catálogo":
         # Mantenemos el key del widget
         codigo_input = st.text_input("Código completo", placeholder="ej: 1IA1", key="busqueda_codigo").upper().strip()
     with t2:
-        st.info("Ingresa el código de la roca. El mismo esta compuesto númenro de roca, puerta, estante y caja. Todos los caracteres deberan ser escritos en mayusculas")
+        st.info("Ingresa el código de la roca. El mismo está compuesto por el número de roca, puerta, estante y caja. Ejemplo: 5ID1 o 5id1")
 
     # Renderizar Buscador
     if codigo_input:
