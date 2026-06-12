@@ -6,6 +6,34 @@ import folium
 from streamlit_folium import st_folium
 from folium.plugins import MarkerCluster
 
+import re
+import requests   
+import streamlit.components.v1 as components   
+# --- FUNCIONES DE SOPORTE 3d ---
+def obtener_url_embed(url_sketchfab):
+    if not url_sketchfab or str(url_sketchfab).strip() == "" or str(url_sketchfab) == "nan":
+        return None
+    
+    url_str = str(url_sketchfab).strip()
+    
+    # Si es link corto, seguimos la redirección para obtener el link real con el ID
+    if "skfb.ly" in url_str:
+        try:
+            respuesta = requests.get(url_str, allow_redirects=True, timeout=3)
+            url_str = respuesta.url
+        except Exception:
+            pass
+
+    # Extraemos el ID de 32 caracteres
+    match = re.search(r"([a-f0-9]{32})", url_str)
+    if match:
+        id_modelo = match.group(1)
+        return f"https://sketchfab.com/models/{id_modelo}/embed"
+    
+    return None
+
+
+
 # --------------------------------
 # ✅ SESSION STATE (INICIALIZACIÓN)
 # --------------------------------
