@@ -499,7 +499,7 @@ def renderizar_muestra_catalogo(row, context="catalogo"):
     is_3d_expanded = False
 
     with col2:
-        st.write("**Acciones:**")
+        st.write("**🎮 Herramientas:**")
         # Botón para geolocalizar (solo si tiene coordenadas)
         if pd.notna(row["latitud"]) and pd.notna(row["longitud"]):
             if st.button(f"📍 Ubicar en Mapa", key=f"map_{context}_{row['samplebox']}"):
