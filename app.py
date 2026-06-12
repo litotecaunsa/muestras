@@ -424,11 +424,11 @@ def generar_pdf_ficha(row):
     buffer.seek(0)
     return buffer
 
-
-
 def renderizar_muestra_catalogo(row, context="catalogo"):
-    """Dibuja una muestra en el catálogo/buscador con lógica 'On Demand'."""
+    """Dibuja una muestra en el catálogo/buscador con lógica 'On Demand' y Visor 3D Apaisado."""
     st.markdown("---")
+    
+    # Creamos las dos columnas principales para los datos y acciones
     col1, col2 = st.columns([2, 1])
 
     with col1:
@@ -459,7 +459,7 @@ def renderizar_muestra_catalogo(row, context="catalogo"):
                 
                 st.markdown("---")
                 
-                # Sección 2: Mineralogía Desglosada (Sin abreviaturas raras)
+                # Sección 2: Mineralogía Desglosada
                 st.markdown("#### 💎 Composición Mineralógica")
                 cm1, cm2 = st.columns(2)
                 with cm1:
@@ -469,8 +469,7 @@ def renderizar_muestra_catalogo(row, context="catalogo"):
                 
                 st.markdown("---")
                 
-                
-                # Sección 3: Matriz de Soporte (Clasto, Matriz, Cemento) adaptativa
+                # Sección 3: Matriz de Soporte
                 st.markdown("#### 🔬 Análisis de Componentes")
                 cc1, cc2, cc3 = st.columns(3)
 
@@ -489,9 +488,19 @@ def renderizar_muestra_catalogo(row, context="catalogo"):
                         st.markdown("<div style='text-align:center;'><b>🟤 Cemento</b></div>", unsafe_allow_html=True)
                         st.markdown(f"<div style='text-align:center;'>{row.get('cemento_sed','—')}</div>", unsafe_allow_html=True)
 
+    # Inicializamos las variables que usaremos para el control del 3D antes del bloque de columnas
+    current_code = row['samplebox']
+    tiene_3d = "3d" in row and isinstance(row["3d"], str) and str(row["3d"]).strip() != "" and str(row["3d"]) != "nan"
+    
+    if '3d_expandido' not in st.session_state:
+        st.session_state['3d_expandido'] = None
+
+    url_embed_3d = None
+    is_3d_expanded = False
 
     with col2:
         st.write("**Acciones:**")
+        # Botón para geolocalizar (solo si tiene coordenadas)
         if pd.notna(row["latitud"]) and pd.notna(row["longitud"]):
             if st.button(f"📍 Ubicar en Mapa", key=f"map_{context}_{row['samplebox']}"):
                 st.session_state.mapa_punto = {
@@ -499,8 +508,8 @@ def renderizar_muestra_catalogo(row, context="catalogo"):
                     "lon": row["longitud"],
                     "nombre": row["samplebox"]
                 }
-                st.session_state.mapa_zoom = None
-                st.session_state.vista = "🗺 Mapa"
+                st.session_state.mapa_zoom = None  
+                st.session_state.vista = "🗺 Mapa"  
                 st.rerun()
         
         # ---------------------------------------------------------
@@ -509,15 +518,14 @@ def renderizar_muestra_catalogo(row, context="catalogo"):
         url_valida = isinstance(row["img_app"], str) and row["img_app"].startswith("http")
 
         if url_valida:
-            current_code = row['samplebox']
             is_expanded = (st.session_state.foto_expandida == current_code)
             label = "🔼 Ocultar Foto" if is_expanded else "📷 Ver Foto"
             
             if st.button(label, key=f"btn_foto_{context}_{current_code}"):
                 if is_expanded:
-                    st.session_state.foto_expandida = None
+                    st.session_state.foto_expandida = None 
                 else:
-                    st.session_state.foto_expandida = current_code
+                    st.session_state.foto_expandida = current_code 
                 st.rerun()
 
             if is_expanded:
@@ -530,16 +538,33 @@ def renderizar_muestra_catalogo(row, context="catalogo"):
                 """, unsafe_allow_html=True)
         else:
             st.warning("⚠️ Muestra sin foto disponible")
+            
+        # ---------------------------------------------------------
+        # ✅ NUEVA ACCIÓN: BOTÓN INTERACTIVO 3D (SOLO SI TIENE LINK)
+        # ---------------------------------------------------------
+        if tiene_3d:
+            url_embed_3d = obtener_url_embed(row["3d"])
+            
+            if url_embed_3d:
+                is_3d_expanded = (st.session_state['3d_expandido'] == current_code)
+                label_3d = "🔼 Ocultar Vista 3D" if is_3d_expanded else "📦 Ver en 3D"
+                
+                # Al agregar el row.name (índice) blindamos el botón contra cualquier duplicado accidental
+                idx_fila = row.name if hasattr(row, 'name') else '0'
+                if st.button(label_3d, key=f"btn_3d_{context}_{current_code}_{idx_fila}"):
+                    if is_3d_expanded:
+                        st.session_state['3d_expandido'] = None  
+                    else:
+                        st.session_state['3d_expandido'] = current_code  
+                    st.rerun()
+
         # ---------------------------------------------------------
         # ✅ NUEVA ACCIÓN: DESCARGAR FICHA TÉCNICA EN PDF
         # ---------------------------------------------------------
-        st.markdown("---") # Una pequeña línea de separación interna
-        
-        # Al hacer clic, ejecuta la función del ReportLab en segundo plano
+        st.markdown("---")
         with st.spinner("Generando ficha técnica en PDF..."):
             try:
                 pdf_datos = generar_pdf_ficha(row)
-                
                 st.download_button(
                     label="📄 Descargar Ficha",
                     data=pdf_datos,
@@ -550,6 +575,34 @@ def renderizar_muestra_catalogo(row, context="catalogo"):
                 )
             except Exception as error_pdf:
                 st.error(f"Error PDF: {error_pdf}")
+
+    # =============================================================================
+    # 🌍 VISOR 3D APAYSADO (¡AFUERA Y ABAJO DE LAS COLUMNAS!)
+    # =============================================================================
+    # Rompemos el bloque indentado de 'with col2' volviendo a la sangría de la función
+    if tiene_3d and url_embed_3d and is_3d_expanded:
+        st.write("---")
+        st.markdown(f"#### 🌍 Visor Interactivo 3D - Muestra {current_code}")
+        
+        iframe_html = f"""
+        <div style="width: 100%; height: 550px; margin-top: 10px; margin-bottom: 10px;">
+            <iframe 
+                title="Visor 3D Sketchfab"
+                src="{url_embed_3d}"
+                width="100%" 
+                height="100%" 
+                frameborder="0" 
+                allowfullscreen 
+                mozallowfullscreen="true" 
+                webkitallowfullscreen="true" 
+                allow="autoplay; fullscreen; xr-spatial-tracking" 
+                xr-spatial-tracking>
+            </iframe>
+        </div>
+        """
+        components.html(iframe_html, height=560)
+
+
                 
 # --------------------------------
 # 🔎 VISTA: CATÁLOGO
