@@ -1065,10 +1065,25 @@ with st.sidebar.expander("👥 Créditos", expanded=False):
         """, 
         unsafe_allow_html=True
     )
-# ✅ NUEVO: Registro de Versión sutil al fondo del Sidebar
+# ✅ Registro de Versión, Créditos Institucionales y Licencia CC al fondo del Sidebar
+st.sidebar.markdown("---") 
 st.sidebar.markdown(
-    '<div style="text-align: center; color: gray; font-size: 0.75rem; margin-top: 20px;">'
-    'Versión 1.0.3 (2026)'
-    '</div>', 
+    """
+    <div style="text-align: center; color: gray; font-size: 0.85rem; line-height: 1.5;">
+        <span style="font-size: 0.8rem; color: #888888;">Versión 1.0.3 (2026)</span><br>
+        <div style="margin-top: 5px; margin-bottom: 5px;">
+            <b>© 2026 Litoteca Digital</b>
+        </div>
+        <div style="margin-top: 10px;">
+            <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/deed.es" target="_blank" style="text-decoration: none; color: #FF4B4B; font-weight: bold;">
+                CC BY-NC-SA 4.0
+            </a>
+        </div>
+        <p style="font-size: 0.75rem; color: #666666; margin-top: 4px; padding: 0 5px;">
+            Atribución - NoComercial - CompartirIgual<br>
+            Material de software y base de datos con fines científicos y educativos.
+        </p>
+    </div>
+    """, 
     unsafe_allow_html=True
 )
