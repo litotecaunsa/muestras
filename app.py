@@ -6,6 +6,7 @@ import folium
 from streamlit_folium import st_folium
 from folium.plugins import MarkerCluster
 
+ 
 import re
 import requests   
 import streamlit.components.v1 as components   
@@ -33,16 +34,40 @@ def obtener_url_embed(url_sketchfab):
     return None
 
 
+# caja de colordef obtener_estilo_badge_fullname(fullname):
+def obtener_estilo_badge_fullname(fullname):
+    """Devuelve el estilo CSS para el badge según la inicial del fullname (R, V, A)."""
+    if not fullname or pd.isna(fullname):
+        return None
+    
+    val = str(fullname).strip().upper()
+    
+    # Colores estéticos y legibles
+    bg_color = "#6c757d"
+    if val.startswith("R"):
+        bg_color = "#D32F2F"
+    elif val.startswith("V"):
+        bg_color = "#2E7D32"
+    elif val.startswith("A"):
+        bg_color = "#1565C0"
+        
+    return f'<span style="background-color: {bg_color}; color: white; padding: 4px 10px; border-radius: 6px; font-size: 0.9rem; font-weight: bold; margin-left: 10px; white-space: nowrap;">📦 {val}</span>'
+    
+
 
 # --------------------------------
 # ✅ SESSION STATE (INICIALIZACIÓN)
 # --------------------------------
+# Control de selección en mapa
 if "mapa_punto" not in st.session_state:
     st.session_state.mapa_punto = None
 
+# Control de zoom en mapa
 if "mapa_zoom" not in st.session_state:
     st.session_state.mapa_zoom = None
 
+# ✅ NUEVO: Control para visualización 'On Demand' en el catálogo
+# Guarda qué código de muestra tiene la foto expandida actualmente
 if "foto_expandida" not in st.session_state:
     st.session_state.foto_expandida = None
 
@@ -75,19 +100,25 @@ def load_data():
     sheet = client.open("db_litoteca_unsa").worksheet("MUESTRAS")
     return pd.DataFrame(sheet.get_all_records())
 
+
+
 # --------------------------------
 # ✅ GESTIÓN DE IMÁGENES (CLOUDINARY DIRECTO)
 # --------------------------------
 def limpiar_url_imagen(texto):
     """Limpia el texto de la columna foto_url1 para obtener la URL base de forma ultra-estricta."""
+    # 1. Si es nulo de pandas, nativo o vacío, se descarta
     if pd.isna(texto) or texto is None:
         return None
         
+    # 2. Convertir a string y limpiar espacios extremos
     texto_str = str(texto).strip()
     
+    # 3. Si quedó vacío o es una palabra clave de error/vacío, se descarta
     if texto_str.lower() in ["", "0", "0.0", "nan", "none", "sin foto", "no", "<na>", "null"]:
         return None
         
+    # 4. Control definitivo: Debe empezar con el protocolo web correcto
     if texto_str.startswith("http://") or texto_str.startswith("https://"):
         return texto_str
         
@@ -95,36 +126,47 @@ def limpiar_url_imagen(texto):
 
 def optimizar_url_cloudinary(url_original):
     """Toma una URL original de Cloudinary e inyecta parámetros de optimización."""
+    # Control estricto: si no recibimos un string limpio con contenido, devolvemos None
     if not isinstance(url_original, str) or not url_original:
         return None
         
     if "cloudinary.com" not in url_original:
         return url_original
     
+    # Inyectar parámetros antes del nombre del archivo (después de /upload/)
     if "/image/upload/" in url_original:
         return url_original.replace("/image/upload/", "/image/upload/f_auto,q_auto,w_500/")
     return url_original
 
+
+
+
+
+
 # --------------------------------
 # DATOS
 # --------------------------------
+# Intentar cargar datos, manejar error de credenciales
 try:
     df_raw = load_data()
 except Exception as e:
     st.error(f"Error al conectar con Google Sheets. Verifica 'credenciales.json'. Error: {e}")
     st.stop()
 
+# Crear copia para trabajar
 df = df_raw.copy()
 
-# ✅ Reparación automática de coordenadas
+# ✅ Reparación automática de coordenadas (tu lógica original mejorada)
 def fix_coord(valor, tipo="lat"):
     if pd.isna(valor) or valor == "":
         return None
     try:
         texto = str(valor).strip().replace(",", ".")
+        # Eliminar cualquier carácter que no sea número, punto o signo menos
         texto_limpio = "".join(c for c in texto if c.isdigit() or c in ".-")
         if not texto_limpio: return None
         numero = float(texto_limpio)
+        # Corrección por escala (asumiendo formato incorrecto sin decimales)
         if tipo == "lat":
             while abs(numero) > 90:
                 numero = numero / 10
@@ -139,9 +181,16 @@ df["latitud"] = df["latitud"].apply(lambda x: fix_coord(x, "lat"))
 df["longitud"] = df["longitud"].apply(lambda x: fix_coord(x, "lon"))
 
 # ✅ Procesamiento de Imágenes Cloudinary Ultra-Seguro
+# 1. Forzamos a que la columna original se trate temporalmente como objeto/string antes de limpiar
 df["img_original"] = df["foto_url1"].apply(limpiar_url_imagen)
+
+# 2. Aplicamos la optimización asegurando que reemplace cualquier residuo con None real
 df["img_app"] = df["img_original"].apply(optimizar_url_cloudinary)
+
+# 3. PASO EXTRA DE SEGURIDAD: Forzamos a que si img_app es un string vacío o nulo de pandas, sea un None de Python puro
 df["img_app"] = df["img_app"].where(df["img_app"].notna(), None)
+
+
 
 # --------------------------------
 # ✅ CONTROL DE VISTA Y LOGO (ESTILO INTA - ADAPTATIVO)
@@ -182,29 +231,59 @@ with st.sidebar.container():
     st.markdown('<p class="sidebar-title">Panel de Control</p>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
+# Dejamos una sola línea limpia aquí
+ 
+
+
+# --------------------------------
+# ✅ CONTROL DE VISTAS EN EL SIDEBAR
+# --------------------------------
+st.sidebar.markdown("---")
+
+# Definir cuál opción debe estar seleccionada por defecto en base al session_state
+indice_actual = 0 if st.session_state.vista == "🔎 Catálogo" else 1
+
+# Primero definimos la variable 'vista' para que Python la conozca
+vista = st.sidebar.radio(
+    "Seleccionar vista",
+    ["🔎 Catálogo", "🗺 Mapa"],
+    index=indice_actual
+)
+
+# Sincronizamos el estado
+st.session_state.vista = vista
 
 
 # --------------------------------
 # ✅ DETALLE EN SIDEBAR (Cuando se selecciona en mapa)
 # --------------------------------
 if st.session_state.mapa_punto:
+    # Buscar la fila por samplebox
     seleccion = df[df["samplebox"] == st.session_state.mapa_punto["nombre"]]
     
     if not seleccion.empty:
         fila = seleccion.iloc[0]
         st.sidebar.markdown("---")
-        st.sidebar.subheader(f"📄 Muestra: {fila['samplebox']}")
-
-        col_sb1, col_sb2 = st.sidebar.columns(2)
-        with col_sb1:
-            st.write(f"**Tipo:** {fila.get('tipo','')}")
-            st.write(f"**Roca:** {fila.get('roca','')}")
-        with col_sb2:
-            st.write(f"**Subtipo:** {fila.get('subtipo','')}")
-            st.write(f"**Color:** {fila.get('color','')}")
         
+        # Badge y Título alineados horizontalmente
+        badge_sidebar = obtener_estilo_badge_fullname(fila.get("fullname")) or ""
+        st.sidebar.markdown(
+            f'<h3 style="margin: 0 0 15px 0; padding: 0; line-height: 1.5; display: block;">'
+            f'<span style="vertical-align: middle;">📄 Muestra: </span>'
+            f'<span style="vertical-align: middle; font-weight: bold;">{fila["samplebox"]}</span>'
+            f'{badge_sidebar}'
+            f'</h3>', 
+            unsafe_allow_html=True
+        )
+            
+        # Info Básica: Un dato abajo del otro sin columnas
+        st.sidebar.write(f"**Tipo:** {fila.get('tipo','')}")
+        st.sidebar.write(f"**Subtipo:** {fila.get('subtipo','')}")
+        st.sidebar.write(f"**Roca:** {fila.get('roca','')}")
+        st.sidebar.write(f"**Color:** {fila.get('color','')}")
         st.sidebar.write(f"**Observaciones:** {fila.get('observaciones','')}")
 
+        # Detalle Sedimentaria
         if fila.get("tipo") == "Sedimentaria":
             with st.sidebar.expander("Ver detalles sedimentarios", expanded=True):
                 st.write(f"**Textura:** {fila.get('textura','')}")
@@ -215,29 +294,17 @@ if st.session_state.mapa_punto:
                 st.write(f"**Matriz:** {fila.get('matriz_sed','')}")
                 st.write(f"**Cemento:** {fila.get('cemento_sed','')}")
 
-        # 📄 FIX DEL ERROR: Forzamos validación estricta de string con http en la barra lateral
-        sb_url_valida = isinstance(fila["img_app"], str) and fila["img_app"].startswith("http")
-        if sb_url_valida:
+        # Imagen (Optimizada para sidebar)
+        if fila["img_app"]:
             st.sidebar.image(fila["img_app"], caption=f"Muestra {fila['samplebox']} (Vista rápida)", use_container_width=True)
-            st.sidebar.markdown(f"🔍[ Ver en Alta Resolución]({fila['img_original']})")
+            st.sidebar.markdown(f"🔍 [Ver en Alta Resolución]({fila['img_original']})")
 
         if st.sidebar.button("❌ Limpiar selección", use_container_width=True):
             st.session_state.mapa_punto = None
-            st.session_state.foto_expandida = None
+            st.session_state.foto_expandida = None 
             st.rerun()
-
-st.sidebar.markdown("---")
-indice_actual = 0 if st.session_state.vista == "🔎 Catálogo" else 1
-
-vista = st.sidebar.radio(
-    "Seleccionar vista",
-    ["🔎 Catálogo", "🗺 Mapa"],
-    index=indice_actual
-)
-
-st.session_state.vista = vista
-
-
+            
+            
 
 # --------------------------------
 # FUNCIONES AUXILIARES DE RENDERIZADO
@@ -250,6 +317,59 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
+
+
+from reportlab.platypus import Paragraph
+from reportlab.lib.styles import getSampleStyleSheet
+
+from reportlab.platypus import Paragraph
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
+
+def agregar_pie_pagina(canvas, doc):
+    canvas.saveState()
+
+    width, height = doc.pagesize
+
+    # ✅ Línea superior
+    canvas.setStrokeColor(colors.HexColor("#CCCCCC"))
+    canvas.setLineWidth(0.5)
+    canvas.line(40, 50, width - 40, 50)
+
+    # ✅ Fondo gris
+    canvas.setFillColor(colors.HexColor("#F5F5F5"))
+    canvas.rect(40, 15, width - 80, 30, fill=1, stroke=0)
+
+    # ✅ estilo centrado
+    styles = getSampleStyleSheet()
+    style_pie = ParagraphStyle(
+        name="PieStyle",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=9,
+        alignment=1,  # 👈 CENTRADO real
+        textColor=colors.HexColor("#333333"),
+        leading=12
+    )
+
+    
+    texto_pie = """
+    Escuela de Geología, Facultad de Ciencias Naturales, UNSa &nbsp;|&nbsp;
+    ✉ litoteca2023@gmail.com &nbsp;|&nbsp;
+    <link href="https://sites.google.com/view/litoteca-unsa/p%C3%A1gina-principal">
+    <font color="#1565C0"><b> Sitio Web</b></font>
+    </link>
+    """
+
+
+    p = Paragraph(texto_pie, style_pie)
+
+    # ✅ centrado real horizontal
+    p_width, p_height = p.wrap(width - 80, height)
+    p.drawOn(canvas, (width - p_width) / 2, 22)
+
+    canvas.restoreState()
+    
 
 def generar_pdf_ficha(row):
     """Genera un archivo PDF con el diseño institucional y la foto de la muestra."""
@@ -313,19 +433,41 @@ def generar_pdf_ficha(row):
     ]))
     story.append(linea_decorativa)
     story.append(Spacer(1, 15))
+    
+    
 
     # -------------------------------------------------------------------------
-    # ✅ TÍTULO DE LA FICHA
+    # ✅ TÍTULO DE LA FICHA + BADGE COLOR INTERNADO
     # -------------------------------------------------------------------------
     style_titulo = ParagraphStyle(
         'TituloStyle',
         fontName='Helvetica-Bold',
         fontSize=18,
-        leading=22,
+        leading=24, # Aumentamos levemente para que el fondo de color no se corte
         textColor=colors.HexColor('#1E1E1E'),
         alignment=0 # Izquierda
     )
-    story.append(Paragraph(f"Ficha Técnica Muestra: {row.get('samplebox', 'S/N')}", style_titulo))
+    
+    # Lógica de color idéntica a la app para el PDF
+    fullname_val = str(row.get('fullname', '')).strip().upper()
+    bg_color_pdf = "#6c757d" # Gris por defecto
+    
+    if fullname_val.startswith("R"):
+        bg_color_pdf = "#D32F2F" # Rojo
+    elif fullname_val.startswith("V"):
+        bg_color_pdf = "#2E7D32" # Verde
+    elif fullname_val.startswith("A"):
+        bg_color_pdf = "#1565C0" # Azul
+        
+    # Si tiene fullname, armamos el fragmento con fondo de color y texto blanco
+    if fullname_val and fullname_val != "NAN" and fullname_val != "":
+        badge_pdf = f'  <font color="white" backColor="{bg_color_pdf}"><b>{fullname_val}</b></font>'
+    else:
+        badge_pdf = ""
+        
+    # Inyectamos el título y el badge juntos
+    texto_titulo = f"Ficha Técnica Muestra: {row.get('samplebox', 'S/N')} / {badge_pdf}"
+    story.append(Paragraph(texto_titulo, style_titulo))
     story.append(Spacer(1, 12))
 
     # -------------------------------------------------------------------------
@@ -333,15 +475,23 @@ def generar_pdf_ficha(row):
     # -------------------------------------------------------------------------
     style_celda_negrita = ParagraphStyle('CeldaN', fontName='Helvetica-Bold', fontSize=10, leading=13)
     style_celda_normal = ParagraphStyle('CeldaD', fontName='Helvetica', fontSize=10, leading=13)
+    # Preparamos el texto de las coordenadas de forma limpia
+    lat = row.get('latitud')
+    lon = row.get('longitud')
     
-    # Datos básicos comunes
+    # Si alguna de las dos coordenadas es nula, vacía o "nan", mostramos el mensaje personalizado
+    if pd.isna(lat) or pd.isna(lon) or lat is None or lon is None or str(lat).lower() == 'nan' or str(lon).lower() == 'nan':
+        coordenadas_texto = "No georreferenciada"
+    else:
+        coordenadas_texto = f"{lat}, {lon}"
+    # Datos básicos comunes (Actualizado con Fullname)
     datos_tabla = [
-        [Paragraph("Código samplebox:", style_celda_negrita), Paragraph(str(row.get('samplebox','—')), style_celda_normal),
+        [Paragraph("Código:", style_celda_negrita), Paragraph(str(row.get('samplebox','—')), style_celda_normal),
          Paragraph("Tipo de Roca:", style_celda_negrita), Paragraph(str(row.get('tipo','—')), style_celda_normal)],
         [Paragraph("Subtipo:", style_celda_negrita), Paragraph(str(row.get('subtipo','—')), style_celda_normal),
          Paragraph("Nombre Roca:", style_celda_negrita), Paragraph(str(row.get('roca','—')), style_celda_normal)],
         [Paragraph("Color característico:", style_celda_negrita), Paragraph(str(row.get('color','—')), style_celda_normal),
-         Paragraph("Coordenadas (Lat/Lon):", style_celda_negrita), Paragraph(f"{row.get('latitud','—')}, {row.get('longitud','—')}", style_celda_normal)]
+         Paragraph("Coordenadas (Lat/Lon):", style_celda_negrita), Paragraph(coordenadas_texto, style_celda_normal)]
     ]
     
     # Agregar filas extra únicamente si es de tipo Sedimentaria
@@ -349,7 +499,7 @@ def generar_pdf_ficha(row):
         datos_tabla.extend([
             [Paragraph("Textura / Estructura:", style_celda_negrita), Paragraph(f"{row.get('textura','—')} / {row.get('estructura','—')}", style_celda_normal),
              Paragraph("Minerales (Pri/Sec):", style_celda_negrita), Paragraph(f"{row.get('mimeral_pri','—')} / {row.get('mineral_secu','—')}", style_celda_normal)],
-            [Paragraph("Fábrica (Clasto/Matriz/Cem):", style_celda_negrita), Paragraph(f"C: {row.get('clasto_sed','—')} | M: {row.get('matriz_sed','—')} | C: {row.get('cemento_sed','—')}", style_celda_normal),
+            [Paragraph("Clasto/Matriz/Cemento:", style_celda_negrita), Paragraph(f"C: {row.get('clasto_sed','—')} | M: {row.get('matriz_sed','—')} | C: {row.get('cemento_sed','—')}", style_celda_normal),
              "", ""]
         ])
         
@@ -413,16 +563,18 @@ def generar_pdf_ficha(row):
                 
                 img_pdf = RLImage(imagen_bytes, width=ancho_disponible, height=alto_escalado)
                 
-                story.append(Paragraph("<b>Registro Fotográfico</b>", style_celda_negrita))
+                story.append(Paragraph("<b>Registro Fotográfico:</b>", style_celda_negrita))
                 story.append(Spacer(1, 8))
                 story.append(img_pdf)
         except Exception as e:
             story.append(Paragraph(f"<i>No se pudo cargar la imagen remota en el PDF. (Error: {e})</i>", style_celda_normal))
-
+    
+    
     # Construir PDF
-    doc.build(story)
+    doc.build(story, onFirstPage=agregar_pie_pagina, onLaterPages=agregar_pie_pagina)
     buffer.seek(0)
     return buffer
+
 
 def renderizar_muestra_catalogo(row, context="catalogo"):
     """Dibuja una muestra en el catálogo/buscador con lógica 'On Demand' y Visor 3D Apaisado."""
@@ -432,8 +584,18 @@ def renderizar_muestra_catalogo(row, context="catalogo"):
     col1, col2 = st.columns([2, 1])
 
     with col1:
-        # 🏷️ Cabecera principal con diseño de tarjeta
-        st.markdown(f"### 🪨 Muestra: <span style='color:#FF4B4B;'>{row.get('samplebox', context)}</span>", unsafe_allow_html=True)
+        # 🏷️ Cabecera principal con diseño de tarjeta + Badge Fullname (Inyección directa limpia)
+        badge_html = obtener_estilo_badge_fullname(row.get("fullname")) or ""
+        
+        # Usamos un título h3 donde todo el contenido interno está forzado a ser una sola línea inline
+        st.markdown(
+            f'<h3 style="margin: 0 0 15px 0; padding: 0; line-height: 1.5; display: block;">'
+            f'<span style="vertical-align: middle;">🪨 Muestra: </span>'
+            f'<span style="color:#FF4B4B; vertical-align: middle;">{row.get("samplebox", context)}</span>'
+            f'{badge_html}'
+            f'</h3>', 
+            unsafe_allow_html=True
+        )
         
         # 🗂️ Ficha de Datos Básicos en columnas limpias
         c1, c2, c3 = st.columns(3)
@@ -454,8 +616,17 @@ def renderizar_muestra_catalogo(row, context="catalogo"):
                 # Sección 1: Textura y Estructura
                 st.markdown("#### 📐 Textura y Estructura")
                 cx1, cx2 = st.columns(2)
-                cx1.metric(label="🧬 Textura", value=str(row.get('textura','—')).capitalize())
-                cx2.metric(label="🧱 Estructura", value=str(row.get('estructura','—')).capitalize())
+                #cx1.metric(label="🧬 Textura", value=str(row.get('textura','—')).capitalize())
+                #cx2.metric(label="🧱 Estructura", value=str(row.get('estructura','—')).capitalize())
+                
+                with cx1:
+                    st.markdown("**🧬 Textura**")
+                    st.write(row.get('textura','—'))
+
+                with cx2:
+                    st.markdown("**🧱 Estructura**")
+                    st.write(row.get('estructura','—'))
+                                
                 
                 st.markdown("---")
                 
@@ -499,7 +670,7 @@ def renderizar_muestra_catalogo(row, context="catalogo"):
     is_3d_expanded = False
 
     with col2:
-        st.write("**🎮 Herramientas:**")
+        st.write("**Acciones:**")
         # Botón para geolocalizar (solo si tiene coordenadas)
         if pd.notna(row["latitud"]) and pd.notna(row["longitud"]):
             if st.button(f"📍 Ubicar en Mapa", key=f"map_{context}_{row['samplebox']}"):
@@ -603,7 +774,10 @@ def renderizar_muestra_catalogo(row, context="catalogo"):
         components.html(iframe_html, height=560)
 
 
-                
+
+
+
+
 # --------------------------------
 # 🔎 VISTA: CATÁLOGO
 # --------------------------------
@@ -620,7 +794,7 @@ if vista == "🔎 Catálogo":
     
     with t1:
         # Mantenemos el key del widget
-        codigo_input = st.text_input("Código", placeholder="ej: 1IA1", key="busqueda_codigo").upper().strip()
+        codigo_input = st.text_input("Código completo", placeholder="ej: 1IA1", key="busqueda_codigo").upper().strip()
     with t2:
         st.info("Ingresa el código de la roca. El mismo está compuesto por el número de roca, puerta, estante y caja. Ejemplo: 5ID1 o 5id1")
 
@@ -644,13 +818,14 @@ if vista == "🔎 Catálogo":
             st.stop() # Detener renderizado del catálogo general si hay búsqueda
 
     st.markdown("---")
-    
-    # ✅ NUEVOS FILTROS EN CASCADA COMPLETA (TIPO -> SUBTIPO -> ROCA)
+	
+	# ✅ FILTROS DEL CATÁLOGO (CASCADA COMPLETA: TIPO -> SUBTIPO -> ROCA)
     st.subheader("Filtrar catálogo completo")
-    col_f1, col_f2, col_f3 = st.columns(3)
-    
+    col_f1, col_f2, col_f3 = st.columns(3)  # Cambiamos a 3 columnas
+
     df_filtrado = df.copy()
 
+    # 1. Filtro por Tipo
     with col_f1:
         tipos_disponibles = sorted(df["tipo"].dropna().unique())
         tipo_sel = st.selectbox("1. Filtrar por Tipo", ["Todos"] + tipos_disponibles)
@@ -658,19 +833,22 @@ if vista == "🔎 Catálogo":
     if tipo_sel != "Todos":
         df_filtrado = df_filtrado[df_filtrado["tipo"] == tipo_sel]
 
+    # 2. Filtro por Subtipo
     with col_f2:
         subtipos_disponibles = sorted(df_filtrado["subtipo"].dropna().unique())
-        subtipo_sel = st.selectbox("2. Filtrar por Subtipo (opcional)", ["Todos"] + subtipos_disponibles)
+        subtipo_sel = st.selectbox("2. Filtrar por Subtipo", ["Todos"] + subtipos_disponibles)
 
     if subtipo_sel != "Todos":
         df_filtrado = df_filtrado[df_filtrado["subtipo"] == subtipo_sel]
 
+    # 3. Filtro por Roca (Nuevo)
     with col_f3:
         rocas_disponibles = sorted(df_filtrado["roca"].dropna().unique())
-        roca_sel = st.selectbox("3. Filtrar por Roca (opcional)", ["Todos"] + rocas_disponibles)
+        roca_sel = st.selectbox("3. Filtrar por Roca", ["Todos"] + rocas_disponibles)
 
     if roca_sel != "Todos":
         df_filtrado = df_filtrado[df_filtrado["roca"] == roca_sel]
+        
 
     # ✅ RESULTADOS INTELIGENTES (Solo bajo demanda de filtros)
     st.markdown("---")
@@ -697,7 +875,8 @@ if vista == "🔎 Catálogo":
     else:
         # Mensaje amigable cuando la pantalla está limpia
         st.info("💡 Selecciona un **Tipo**, **Subtipo** o **Roca** en los filtros de arriba (o ingresa un código en el buscador) para empezar a explorar las muestras.")
-
+        
+        
 # --------------------------------
 # 🗺 VISTA: MAPA GENERAL (FILTRADO INTELIGENTE)
 # --------------------------------
@@ -731,7 +910,7 @@ elif vista == "🗺 Mapa":
             st.warning("La muestra seleccionada no tiene coordenadas válidas de GPS.")
             st.stop()
     else:
-        st.header("Mapa de distribución general de muestras (UNSA)")
+        st.header("Muestras georeferenciadas")
 
     # ✅ Gestión de Jitter (pequeña variación para puntos superpuestos)
     df_mapa = df_mapa.copy()
@@ -789,12 +968,13 @@ elif vista == "🗺 Mapa":
     for i, row in df_mapa.iterrows():
         popup_html = f"""
         <div style="font-family: sans-serif; min-width: 200px;">
-            <div style="background-color: #f0f0f0; padding: 5px; border-radius: 4px; font-weight: bold; margin-bottom: 5px; color: black;">
-                {row['samplebox']}
+            <div style="background-color: #e8a7a7; padding: 5px; border-radius: 4px; font-weight: bold; margin-bottom: 5px; color: black;text-align: center;">
+                Muestra {row['samplebox']} 
             </div>
             <span style="color: black;"><b>Tipo:</b> {row.get('tipo','--')}</span><br>
             <span style="color: black;"><b>Roca:</b> {row.get('roca','--')}</span><br>
             <span style="color: black;"><b>Color:</b> {row.get('color','--')}</span><br>
+            <span style="color: black;"><b>Código:</b> {row.get('fullname','--')}</span><br>
         """
 
         if row["img_app"]:
@@ -837,11 +1017,33 @@ elif vista == "🗺 Mapa":
         st.info("ℹ️ Estás viendo únicamente la muestra seleccionada. Toda su información detallada está disponible en el panel izquierdo (Sidebar).")
     else:
         st.info("💡 Haz clic en los marcadores o clusters para explorar las muestras georeferenciadas de la UNSA.")
+        
 # --------------------------------
 # ✅ CRÉDITOS Y PARTICIPANTES (AL FINAL DEL SIDEBAR)
 # --------------------------------
 st.sidebar.markdown("---")
-with st.sidebar.expander("👥 Créditos del Proyecto", expanded=False):
+# --------------------------------
+# ✅ PRESENTACIÓN INSTITUCIONAL (ARRIBA DEL SELECTOR DE VISTAS)
+# --------------------------------
+with st.sidebar.expander("🏛️ Acerca de la Litoteca", expanded=False): # True para que aparezca abierto al iniciar
+    st.markdown(
+        """
+        <div style="text-align: justify; font-size: 0.9rem; line-height: 1.4;">
+            <b>"La litoteca"</b> es el primer repositorio digital de muestras geológicas de la Argentina, 
+            desarrollado por estudiantes y profesores de la carrera de geología.<br><br>
+            Usted podrá consultar la colección de rocas y minerales de la Facultad de Ciencias Naturales 
+            de la Universidad Nacional de Salta (UNSa) destinado a la comunidad académica y el público en general, 
+            con el objetivo de facilitar el acceso al conocimiento geológico y promover su difusión.<br><br>
+            Cada ejemplar en esta web ha sido meticulosamente fotografiado, descrito y clasificado según los 
+            estándares científicos, transformándose en una herramienta digital esencial para complementar los 
+            estudios teóricos y fomentar la curiosidad por las ciencias de la Tierra.<br><br>
+            Creemos que este repositorio constituye una herramienta de consulta, aprendizaje e investigación 
+            que contribuye al estudio de las Ciencias de la Tierra y al conocimiento del patrimonio geológico de nuestro país.
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+with st.sidebar.expander("👥 Créditos", expanded=False):
     st.markdown(
         """
         <div style="font-size: 0.9rem;">
@@ -870,3 +1072,10 @@ with st.sidebar.expander("👥 Créditos del Proyecto", expanded=False):
         """, 
         unsafe_allow_html=True
     )
+# ✅ NUEVO: Registro de Versión sutil al fondo del Sidebar
+st.sidebar.markdown(
+    '<div style="text-align: center; color: gray; font-size: 0.75rem; margin-top: 20px;">'
+    'Versión 1.0.1 (2026)'
+    '</div>', 
+    unsafe_allow_html=True
+)
