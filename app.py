@@ -790,9 +790,9 @@ if vista == "🔎 Catálogo":
         # Mantenemos el key del widget
         codigo_input = st.text_input("Código completo", placeholder="ej: 1IA1", key="busqueda_codigo").upper().strip()
     with t2:
-        st.info("Ingresa el código de la roca. El mismo está compuesto por el número de roca, puerta, estante y caja. Ejemplo: 5ID1 o 5id1")
+        st.info("Ingresa el código de la roca. El mismo esta compuesto número de roca, puerta, estante y caja. Todos los caracteres deberán ser escritos en mayúsculas")
 
-    # Renderizar Buscador
+    # Renderizar Buscador u Opciones Generales usando un flujo condicional
     if codigo_input:
         df_busqueda = df[df["samplebox"].astype(str) == codigo_input]
         
@@ -803,72 +803,71 @@ if vista == "🔎 Catálogo":
         else:
             st.success(f"Se encontró {len(df_busqueda)} coincidencia(s) para: {codigo_input}")
             
-            # 🆕 BOTÓN DE RETORNO CON CALLBACK (Evita el StreamlitAPIException)
+            # 🆕 BOTÓN DE RETORNO CON CALLBACK
             st.button("⬅️ Volver al catálogo completo", use_container_width=True, key="btn_volver_exito", on_click=limpiar_buscador)
                 
             for _, row in df_busqueda.iterrows():
                 renderizar_muestra_catalogo(row, context="search")
             
-            st.stop() # Detener renderizado del catálogo general si hay búsqueda
+            # NOTA: Se removió el st.stop() para permitir que el Sidebar termine de dibujarse de manera prolija.
 
-    st.markdown("---")
-	
-	# ✅ FILTROS DEL CATÁLOGO (CASCADA COMPLETA: TIPO -> SUBTIPO -> ROCA)
-    st.subheader("Filtrar catálogo completo")
-    col_f1, col_f2, col_f3 = st.columns(3)  # Cambiamos a 3 columnas
-
-    df_filtrado = df.copy()
-
-    # 1. Filtro por Tipo
-    with col_f1:
-        tipos_disponibles = sorted(df["tipo"].dropna().unique())
-        tipo_sel = st.selectbox("1. Filtrar por Tipo", ["Todos"] + tipos_disponibles)
-
-    if tipo_sel != "Todos":
-        df_filtrado = df_filtrado[df_filtrado["tipo"] == tipo_sel]
-
-    # 2. Filtro por Subtipo
-    with col_f2:
-        subtipos_disponibles = sorted(df_filtrado["subtipo"].dropna().unique())
-        subtipo_sel = st.selectbox("2. Filtrar por Subtipo", ["Todos"] + subtipos_disponibles)
-
-    if subtipo_sel != "Todos":
-        df_filtrado = df_filtrado[df_filtrado["subtipo"] == subtipo_sel]
-
-    # 3. Filtro por Roca (Nuevo)
-    with col_f3:
-        rocas_disponibles = sorted(df_filtrado["roca"].dropna().unique())
-        roca_sel = st.selectbox("3. Filtrar por Roca", ["Todos"] + rocas_disponibles)
-
-    if roca_sel != "Todos":
-        df_filtrado = df_filtrado[df_filtrado["roca"] == roca_sel]
-        
-
-    # ✅ RESULTADOS INTELIGENTES (Solo bajo demanda de filtros)
-    st.markdown("---")
-    
-    # Verificamos si el usuario activó algún filtro
-    ha_filtrado = (tipo_sel != "Todos") or (subtipo_sel != "Todos") or (roca_sel != "Todos")
-
-    if ha_filtrado:
-        total_resultados = len(df_filtrado)
-        st.write(f"🔎 Resultados encontrados: **{total_resultados}**")
-
-        if total_resultados == 0:
-            st.info("🥪 No se encontraron muestras que coincidan con la combinación de filtros seleccionada.")
-        else:
-            # Ponemos un límite de cortesía por rendimiento, pero ahora tiene sentido
-            MAX_MUESTRAS_CATALOGO = 20 
-            if total_resultados > MAX_MUESTRAS_CATALOGO:
-                st.warning(f"Mostrando las primeras {MAX_MUESTRAS_CATALOGO} muestras. Refina los filtros para acotar la búsqueda.")
-                df_filtrado = df_filtrado.head(MAX_MUESTRAS_CATALOGO)
-
-            # Renderizado del bucle principal
-            for _, row in df_filtrado.iterrows():
-                renderizar_muestra_catalogo(row, context="cat")
     else:
-        # Mensaje amigable cuando la pantalla está limpia
-        st.info("💡 Selecciona un **Tipo**, **Subtipo** o **Roca** en los filtros de arriba (o ingresa un código en el buscador) para empezar a explorar las muestras.")
+        # ✅ FILTROS DEL CATÁLOGO (CASCADA COMPLETA: TIPO -> SUBTIPO -> ROCA)
+        st.subheader("Filtrar catálogo completo")
+        col_f1, col_f2, col_f3 = st.columns(3)
+
+        df_filtrado = df.copy()
+
+        # 1. Filtro por Tipo
+        with col_f1:
+            tipos_disponibles = sorted(df["tipo"].dropna().unique())
+            tipo_sel = st.selectbox("1. Filtrar por Tipo", ["Todos"] + tipos_disponibles)
+
+        if tipo_sel != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["tipo"] == tipo_sel]
+
+        # 2. Filtro por Subtipo
+        with col_f2:
+            subtipos_disponibles = sorted(df_filtrado["subtipo"].dropna().unique())
+            subtipo_sel = st.selectbox("2. Filtrar por Subtipo", ["Todos"] + subtipos_disponibles)
+
+        if subtipo_sel != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["subtipo"] == subtipo_sel]
+
+        # 3. Filtro por Roca
+        with col_f3:
+            rocas_disponibles = sorted(df_filtrado["roca"].dropna().unique())
+            roca_sel = st.selectbox("3. Filtrar por Roca", ["Todos"] + rocas_disponibles)
+
+        if roca_sel != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["roca"] == roca_sel]
+            
+
+        # ✅ RESULTADOS INTELIGENTES (Solo bajo demanda de filtros)
+        st.markdown("---")
+        
+        # Verificamos si el usuario activó algún filtro
+        ha_filtrado = (tipo_sel != "Todos") or (subtipo_sel != "Todos") or (roca_sel != "Todos")
+
+        if ha_filtrado:
+            total_resultados = len(df_filtrado)
+            st.write(f"🔎 Resultados encontrados: **{total_resultados}**")
+
+            if total_resultados == 0:
+                st.info("🥪 No se encontraron muestras que coincidan con la combinación de filtros seleccionada.")
+            else:
+                # Límite de cortesía por rendimiento
+                MAX_MUESTRAS_CATALOGO = 20 
+                if total_resultados > MAX_MUESTRAS_CATALOGO:
+                    st.warning(f"Mostrando las primeras {MAX_MUESTRAS_CATALOGO} muestras. Refina los filtros para acotar la búsqueda.")
+                    df_filtrado = df_filtrado.head(MAX_MUESTRAS_CATALOGO)
+
+                # Renderizado del bucle principal
+                for _, row in df_filtrado.iterrows():
+                    renderizar_muestra_catalogo(row, context="cat")
+        else:
+            # Mensaje amigable cuando la pantalla está limpia
+            st.info("💡 Selecciona un **Tipo**, **Subtipo** o **Roca** en los filtros de arriba (o ingresa un código en el buscador) para empezar a explorar las muestras.")
         
         
 # --------------------------------
@@ -1069,7 +1068,7 @@ with st.sidebar.expander("👥 Créditos", expanded=False):
 # ✅ NUEVO: Registro de Versión sutil al fondo del Sidebar
 st.sidebar.markdown(
     '<div style="text-align: center; color: gray; font-size: 0.75rem; margin-top: 20px;">'
-    'Versión 1.0.1 (2026)'
+    'Versión 1.0.3 (2026)'
     '</div>', 
     unsafe_allow_html=True
 )
