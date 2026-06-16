@@ -577,18 +577,34 @@ def generar_pdf_ficha(row):
 
 
 
+    
 def renderizar_muestra_catalogo(row, context="catalogo"):
-    """Dibuja una muestra en el catálogo/buscador con lógica 'On Demand' y Visor 3D Apaisado."""
+    """Dibuja una muestra en el catálogo/buscador con lógica 'On Demand' y diseño de ancho completo para PDF."""
     st.markdown("---")
     
-    # Creamos las dos columnas principales para los datos y acciones
+    # Creamos las dos columnas principales para los datos y acciones rápidas
     col1, col2 = st.columns([2, 1])
+
+    # Inicializamos las variables que usaremos para el control del 3D antes del bloque de columnas
+    current_code = row['samplebox']
+    tiene_3d = "3d" in row and isinstance(row["3d"], str) and str(row["3d"]).strip() != "" and str(row["3d"]) != "nan"
+    
+    if '3d_expandido' not in st.session_state:
+        st.session_state['3d_expandido'] = None
+
+    url_embed_3d = None
+    is_3d_expanded = False
+    
+    if tiene_3d:
+        url_embed_3d = obtener_url_embed(row["3d"])
+        if url_embed_3d:
+            is_3d_expanded = (st.session_state['3d_expandido'] == current_code)
 
     with col1:
         # 🏷️ Cabecera principal con diseño de tarjeta + Badge Fullname (Inyección directa limpia)
         badge_html = obtener_estilo_badge_fullname(row.get("fullname")) or ""
         
-        # Usamos un título h3 donde todo el contenido interno está forzado a ser una sola línea inline
+        # Título h3 donde todo el contenido interno está forzado a ser una sola línea inline
         st.markdown(
             f'<h3 style="margin: 0 0 15px 0; padding: 0; line-height: 1.5; display: block;">'
             f'<span style="vertical-align: middle;">🪨 Muestra: </span>'
@@ -617,8 +633,6 @@ def renderizar_muestra_catalogo(row, context="catalogo"):
                 # Sección 1: Textura y Estructura
                 st.markdown("#### 📐 Textura y Estructura")
                 cx1, cx2 = st.columns(2)
-                #cx1.metric(label="🧬 Textura", value=str(row.get('textura','—')).capitalize())
-                #cx2.metric(label="🧱 Estructura", value=str(row.get('estructura','—')).capitalize())
                 
                 with cx1:
                     st.markdown("**🧬 Textura**")
@@ -628,7 +642,6 @@ def renderizar_muestra_catalogo(row, context="catalogo"):
                     st.markdown("**🧱 Estructura**")
                     st.write(row.get('estructura','—'))
                                 
-                
                 st.markdown("---")
                 
                 # Sección 2: Mineralogía Desglosada
@@ -660,21 +673,11 @@ def renderizar_muestra_catalogo(row, context="catalogo"):
                         st.markdown("<div style='text-align:center;'><b>🟤 Cemento</b></div>", unsafe_allow_html=True)
                         st.markdown(f"<div style='text-align:center;'>{row.get('cemento_sed','—')}</div>", unsafe_allow_html=True)
 
-    # Inicializamos las variables que usaremos para el control del 3D antes del bloque de columnas
-    current_code = row['samplebox']
-    tiene_3d = "3d" in row and isinstance(row["3d"], str) and str(row["3d"]).strip() != "" and str(row["3d"]) != "nan"
-    
-    if '3d_expandido' not in st.session_state:
-        st.session_state['3d_expandido'] = None
-
-    url_embed_3d = None
-    is_3d_expanded = False
-
     with col2:
-        st.write("**Acciones:**")
+        st.write("**Acciones Rápidas:**")
         # Botón para geolocalizar (solo si tiene coordenadas)
         if pd.notna(row["latitud"]) and pd.notna(row["longitud"]):
-            if st.button(f"📍 Ubicar en Mapa", key=f"map_{context}_{row['samplebox']}"):
+            if st.button(f"📍 Ubicar en Mapa", key=f"map_{context}_{row['samplebox']}", use_container_width=True):
                 st.session_state.mapa_punto = {
                     "lat": row["latitud"],
                     "lon": row["longitud"],
@@ -693,7 +696,7 @@ def renderizar_muestra_catalogo(row, context="catalogo"):
             is_expanded = (st.session_state.foto_expandida == current_code)
             label = "🔼 Ocultar Foto" if is_expanded else "📷 Ver Foto"
             
-            if st.button(label, key=f"btn_foto_{context}_{current_code}"):
+            if st.button(label, key=f"btn_foto_{context}_{current_code}", use_container_width=True):
                 if is_expanded:
                     st.session_state.foto_expandida = None 
                 else:
@@ -706,58 +709,36 @@ def renderizar_muestra_catalogo(row, context="catalogo"):
                 <a href="{row['img_original']}" target="_blank">
                     <img src="{row['img_app']}" style="width:100%; border-radius:8px; border: 2px solid #ddd; cursor: zoom-in;" title="Click para ver original en alta resolución">
                 </a>
-                <div style="text-align: center; color: gray; font-size: 0.8rem;">🔍 Click en la imagen para ampliar (Muestra {current_code})</div>
+                <div style="text-align: center; color: gray; font-size: 0.8rem;">🔍 Click en la imagen para ampliar</div>
                 """, unsafe_allow_html=True)
         else:
             st.warning("⚠️ Muestra sin foto disponible")
             
         # ---------------------------------------------------------
-        # ✅ NUEVA ACCIÓN: BOTÓN INTERACTIVO 3D (SOLO SI TIENE LINK)
+        # ✅ BOTÓN INTERACTIVO 3D (EN LA BOTONERA LATERAL)
         # ---------------------------------------------------------
-        if tiene_3d:
-            url_embed_3d = obtener_url_embed(row["3d"])
+        if tiene_3d and url_embed_3d:
+            label_3d = "🔼 Ocultar Vista 3D" if is_3d_expanded else "📦 Ver en 3D"
+            idx_fila = row.name if hasattr(row, 'name') else '0'
             
-            if url_embed_3d:
-                is_3d_expanded = (st.session_state['3d_expandido'] == current_code)
-                label_3d = "🔼 Ocultar Vista 3D" if is_3d_expanded else "📦 Ver en 3D"
-                
-                # Al agregar el row.name (índice) blindamos el botón contra cualquier duplicado accidental
-                idx_fila = row.name if hasattr(row, 'name') else '0'
-                if st.button(label_3d, key=f"btn_3d_{context}_{current_code}_{idx_fila}"):
-                    if is_3d_expanded:
-                        st.session_state['3d_expandido'] = None  
-                    else:
-                        st.session_state['3d_expandido'] = current_code  
-                    st.rerun()
-
-        # ---------------------------------------------------------
-        # ✅ NUEVA ACCIÓN: DESCARGAR FICHA TÉCNICA EN PDF
-        # ---------------------------------------------------------
-        st.markdown("---")
-        with st.spinner("Generando ficha técnica en PDF..."):
-            try:
-                pdf_datos = generar_pdf_ficha(row)
-                st.download_button(
-                    label="📄 Descargar Ficha",
-                    data=pdf_datos,
-                    file_name=f"Ficha_{row['samplebox']}.pdf",
-                    mime="application/pdf",
-                    key=f"download_{context}_{row['samplebox']}",
-                    use_container_width=True
-                )
-            except Exception as error_pdf:
-                st.error(f"Error PDF: {error_pdf}")
+            if st.button(label_3d, key=f"btn_3d_{context}_{current_code}_{idx_fila}", use_container_width=True):
+                if is_3d_expanded:
+                    st.session_state['3d_expandido'] = None  
+                else:
+                    st.session_state['3d_expandido'] = current_code  
+                st.rerun()
 
     # =============================================================================
-    # 🌍 VISOR 3D APAYSADO (¡AFUERA Y ABAJO DE LAS COLUMNAS!)
+    # 🌍 SECCIÓN DE ANCHO COMPLETO (FUERA Y ABAJO DE LAS COLUMNAS COL1 Y COL2)
     # =============================================================================
-    # Rompemos el bloque indentado de 'with col2' volviendo a la sangría de la función
+    
+    # 1. El Visor 3D si está activo toma todo el ancho disponible de la pantalla de forma apaisada
     if tiene_3d and url_embed_3d and is_3d_expanded:
         st.write("---")
-        st.markdown(f"#### 🌍 Visor Interactivo 3D - Muestra {current_code}")
+        st.markdown(f"#### 🌍 Visor 3D - Muestra {current_code}")
         
         iframe_html = f"""
-        <div style="width: 100%; height: 550px; margin-top: 10px; margin-bottom: 10px;">
+        <div style="width: 100%; height: 500px; margin-top: 10px; margin-bottom: 10px;">
             <iframe 
                 title="Visor 3D Sketchfab"
                 src="{url_embed_3d}"
@@ -772,14 +753,23 @@ def renderizar_muestra_catalogo(row, context="catalogo"):
             </iframe>
         </div>
         """
-        components.html(iframe_html, height=560)
+        components.html(iframe_html, height=510)
 
-
-
-
-
-
-
+    # 2. El botón de Descarga de Ficha técnica pasa al fondo absoluto ocupando todo el ancho horizontal
+    st.write("---")
+    with st.spinner("Generando ficha técnica en PDF..."):
+        try:
+            pdf_datos = generar_pdf_ficha(row)
+            st.download_button(
+                label=f"📄 Descargar Ficha Técnica (Muestra {row['samplebox']})",
+                data=pdf_datos,
+                file_name=f"Ficha_{row['samplebox']}.pdf",
+                mime="application/pdf",
+                key=f"download_{context}_{row['samplebox']}",
+                use_container_width=True  # 👈 Ocupa el 100% del ancho de la app
+            )
+        except Exception as error_pdf:
+            st.error(f"Error al compilar el PDF de la muestra: {error_pdf}")
 
 
 # --------------------------------
