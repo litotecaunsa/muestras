@@ -576,6 +576,7 @@ def generar_pdf_ficha(row):
     return buffer
 
 
+
 def renderizar_muestra_catalogo(row, context="catalogo"):
     """Dibuja una muestra en el catálogo/buscador con lógica 'On Demand' y Visor 3D Apaisado."""
     st.markdown("---")
@@ -772,6 +773,9 @@ def renderizar_muestra_catalogo(row, context="catalogo"):
         </div>
         """
         components.html(iframe_html, height=560)
+
+
+
 
 
 
