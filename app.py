@@ -812,15 +812,38 @@ if vista == "🔎 Catálogo":
             # NOTA: Se removió el st.stop() para permitir que el Sidebar termine de dibujarse de manera prolija.
 
     else:
-        # ✅ FILTROS DEL CATÁLOGO (CASCADA COMPLETA: TIPO -> SUBTIPO -> ROCA)
+        # ✅ FILTROS DEL CATÁLOGO
         st.subheader("Filtrar catálogo completo")
-        col_f1, col_f2, col_f3 = st.columns(3)
+        
+        # 🆕 NUEVOS FILTROS INTERACTIVOS: Avanzados / Multimedia
+        col_adv1, col_adv2 = st.columns(2)
+        with col_adv1:
+            filtro_3d = st.checkbox("📦 Mostrar solo muestras con Visor 3D", value=False)
+        with col_adv2:
+            filtro_geo = st.checkbox("🗺️ Mostrar solo muestras georreferenciadas", value=False)
 
+        # Clonamos el dataframe original para empezar a aplicar la cascada
         df_filtrado = df.copy()
 
-        # 1. Filtro por Tipo
+        # 🆕 Aplicar filtros avanzados primero si están activos
+        if filtro_3d:
+            # Filtra las que tienen contenido válido en la columna '3d'
+            df_filtrado = df_filtrado[
+                df_filtrado["3d"].notna() & 
+                (df_filtrado["3d"].astype(str).str.strip() != "") & 
+                (df_filtrado["3d"].astype(str) != "nan")
+            ]
+            
+        if filtro_geo:
+            # Filtra las que tienen coordenadas válidas de latitud y longitud
+            df_filtrado = df_filtrado.dropna(subset=["latitud", "longitud"])
+
+        # Desplegables en cascada (Tipo -> Subtipo -> Roca)
+        col_f1, col_f2, col_f3 = st.columns(3)
+
+        # 1. Filtro por Tipo (ahora dinámico según los filtros anteriores)
         with col_f1:
-            tipos_disponibles = sorted(df["tipo"].dropna().unique())
+            tipos_disponibles = sorted(df_filtrado["tipo"].dropna().unique())
             tipo_sel = st.selectbox("1. Filtrar por Tipo", ["Todos"] + tipos_disponibles)
 
         if tipo_sel != "Todos":
@@ -843,11 +866,11 @@ if vista == "🔎 Catálogo":
             df_filtrado = df_filtrado[df_filtrado["roca"] == roca_sel]
             
 
-        # ✅ RESULTADOS INTELIGENTES (Solo bajo demanda de filtros)
+        # ✅ RESULTADOS INTELIGENTES (Se activa si usó filtros de cascada O los nuevos checkboxes)
         st.markdown("---")
         
-        # Verificamos si el usuario activó algún filtro
-        ha_filtrado = (tipo_sel != "Todos") or (subtipo_sel != "Todos") or (roca_sel != "Todos")
+        # Verificamos si el usuario activó cualquier tipo de filtro
+        ha_filtrado = (tipo_sel != "Todos") or (subtipo_sel != "Todos") or (roca_sel != "Todos") or filtro_3d or filtro_geo
 
         if ha_filtrado:
             total_resultados = len(df_filtrado)
@@ -867,7 +890,7 @@ if vista == "🔎 Catálogo":
                     renderizar_muestra_catalogo(row, context="cat")
         else:
             # Mensaje amigable cuando la pantalla está limpia
-            st.info("💡 Selecciona un **Tipo**, **Subtipo** o **Roca** en los filtros de arriba (o ingresa un código en el buscador) para empezar a explorar las muestras.")
+            st.info("💡 Selecciona alguna opción o marca un filtro arriba para empezar a explorar las muestras.")
         
         
 # --------------------------------
@@ -1018,20 +1041,16 @@ st.sidebar.markdown("---")
 # --------------------------------
 # ✅ PRESENTACIÓN INSTITUCIONAL (ARRIBA DEL SELECTOR DE VISTAS)
 # --------------------------------
-with st.sidebar.expander("🏛️ Acerca de la Litoteca", expanded=False): # True para que aparezca abierto al iniciar
+with st.sidebar.expander("🏛️ Acerca del Repositorio Digital", expanded=False):
     st.markdown(
         """
         <div style="text-align: justify; font-size: 0.9rem; line-height: 1.4;">
-            <b>"La litoteca"</b> es el primer repositorio digital de muestras geológicas de la Argentina, 
-            desarrollado por estudiantes y profesores de la carrera de geología.<br><br>
-            Usted podrá consultar la colección de rocas y minerales de la Facultad de Ciencias Naturales 
-            de la Universidad Nacional de Salta (UNSa) destinado a la comunidad académica y el público en general, 
-            con el objetivo de facilitar el acceso al conocimiento geológico y promover su difusión.<br><br>
-            Cada ejemplar en esta web ha sido meticulosamente fotografiado, descrito y clasificado según los 
-            estándares científicos, transformándose en una herramienta digital esencial para complementar los 
-            estudios teóricos y fomentar la curiosidad por las ciencias de la Tierra.<br><br>
-            Creemos que este repositorio constituye una herramienta de consulta, aprendizaje e investigación 
-            que contribuye al estudio de las Ciencias de la Tierra y al conocimiento del patrimonio geológico de nuestro país.
+            Esta aplicación interactiva es la extensión digital de 
+            <a href="https://sites.google.com/view/litoteca-unsa/p%C3%A1gina-principal" target="_blank" style="text-decoration: none; color: #FF4B4B; font-weight: bold;">
+                "La litoteca"
+            </a>, el primer repositorio de muestras geológicas de la Argentina desarrollado por la Universidad Nacional de Salta (UNSa).<br><br>
+            A través de este sistema, usted puede explorar de manera dinámica la colección de rocas y minerales de la Facultad de Ciencias Naturales. La plataforma permite realizar búsquedas avanzadas por codificación de almacenamiento, filtrar el catálogo por tipo de roca, visualizar mapas de muestras georreferenciadas, interactuar con modelos multimedia en 3D y exportar fichas técnicas institucionales en formato PDF.<br><br>
+            El propósito de este entorno digital es consolidar una herramienta científica de consulta, aprendizaje e investigación ágil, diseñada para optimizar los estudios teóricos y facilitar el acceso libre al patrimonio geológico de nuestro país.
         </div>
         """,
         unsafe_allow_html=True
@@ -1070,7 +1089,7 @@ st.sidebar.markdown("---")
 st.sidebar.markdown(
     """
     <div style="text-align: center; color: gray; font-size: 0.85rem; line-height: 1.5;">
-        <span style="font-size: 0.8rem; color: #888888;">Versión 1.0.3 (2026)</span><br>
+        <span style="font-size: 0.8rem; color: #888888;">Versión 1.1.0 (2026)</span><br>
         <div style="margin-top: 5px; margin-bottom: 5px;">
             <b>© 2026 Litoteca Digital</b>
         </div>
